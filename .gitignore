@@ -10,6 +10,8 @@ __pycache__/
 input.txt
 env/
 venv/
+logs/
+out/
 mup_examples/*/*/out/*
 completep_examples/*/*/out/*
 completep_examples/data
