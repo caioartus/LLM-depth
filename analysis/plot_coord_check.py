@@ -4,7 +4,7 @@ which copies the runs to results/coord_check/:
 
     uv run --frozen python analysis/plot_coord_check.py
 
-Writes results/coord_check/depth.png (width 256, L = 2..64) and width.png (L = 2, d = 256..1024).
+Writes results/coord_check/plots/depth.png (width 256, L = 2..64) and width.png (L = 2, d = 256..1024).
 Each panel: mean |output| of one layer type vs depth (or width), one line per training step,
 averaged over seeds. Pass: the CompleteP lines are roughly flat (no systematic growth or decay
 with L or d) at every step. SP is expected to drift with depth.
@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 DIR = Path("results/coord_check")
+PLOTS = DIR / "plots"
 LAYERS = [("token_embedding", "token embedding"), ("attn", "attention branch"), ("mlp", "MLP branch"),
           ("last_layer", "last block (residual stream)"), ("lm_head", "lm_head (logits)")]
 
@@ -69,8 +70,9 @@ def plot_sweep(filename, x_name, shapes):
     axes[0, -1].legend(fontsize=7, frameon=False, loc="upper left", bbox_to_anchor=(1.02, 1.0))
     fig.suptitle(f"Coordinate check vs {x_name} (mean over seeds)", fontsize=12)
     fig.tight_layout()
-    fig.savefig(DIR / filename, dpi=150, bbox_inches="tight")
-    print(f"wrote {DIR / filename}")
+    PLOTS.mkdir(exist_ok=True)
+    fig.savefig(PLOTS / filename, dpi=150, bbox_inches="tight")
+    print(f"wrote {PLOTS / filename}")
 
 
 plot_sweep("depth.png", "depth L", [(256, L) for L in [2, 4, 8, 16, 32, 64]])

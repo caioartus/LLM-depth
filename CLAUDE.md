@@ -163,7 +163,7 @@ Code changes for the study are marked `### Begin depth-study code ###` (train.py
     - `DRY_RUN=1` prints a script's commands without submitting.
 - **analysis/**:
   - `collect_results.py` copies the small logs from `out/` (gitignored) to `results/` (committed) and writes `results/runs.csv`, `best_lr.csv` and `best_lr.md`. `best_lr.md` holds the LRs tried per shape, the edge-rule flags, unfinished runs and the CompleteP transfer check.
-  - `plot_coord_check.py` writes `results/coord_check/{depth,width}.png`.
+  - `plot_coord_check.py` writes `results/coord_check/plots/{depth,width}.png`.
 
 ## Run names
 `tune-<sp|completep>-<d>x<L>-lr<lr>`, `sp-512x16` (shared by conditions a and b), `sp-transfer-<shape>`, `sp-tuned-<shape>`, `completep-<shape>`, `smoke-*` (ignored by collect). `collect_results.py` classifies runs by these prefixes.

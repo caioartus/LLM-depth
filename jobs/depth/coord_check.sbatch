@@ -11,7 +11,7 @@
 #   mkdir -p logs
 #   sbatch jobs/depth/coord_check.sbatch
 #   uv run --frozen python analysis/collect_results.py       # copies out/coord_check/ -> results/coord_check/
-#   uv run --frozen python analysis/plot_coord_check.py      # -> results/coord_check/*.png
+#   uv run --frozen python analysis/plot_coord_check.py      # -> results/coord_check/plots/*.png
 #
 # Output: out/coord_check/<sp|completep>-<d>x<L>-seed<s>/eval.csv
 
