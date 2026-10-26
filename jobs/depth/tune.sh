@@ -9,8 +9,8 @@
 #   jobs/depth/tune.sh sp 256x64 4.8e-3          # edge rule: extra LR point(s) for one shape
 #   DRY_RUN=1 jobs/depth/tune.sh sp              # print the sbatch commands without submitting
 #
-# Run names: tune-<sp|completep>-<shape>-lr<lr>. Results: out/<name>-<jobid>/log.csv,
-# the optimum of a shape is the LR with the lowest val/loss in the last row.
+# Run names: tune-<sp|completep>-<shape>-lr<lr>. Results: out/<name>/eval.csv. When all have finished,
+# run analysis/collect_results.py: it picks the optimum per shape -> results/best_lr.{csv,md}.
 
 set -euo pipefail
 
