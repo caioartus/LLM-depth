@@ -48,11 +48,13 @@ wandb_project = 'owt'
 wandb_run_name = 'gpt2' # 'run' + str(time.time())
 # csv logging
 csv_log = False # If enabled, logs stats to a csv file
+run_log = False # depth study: append train.csv / eval.csv in out_dir row by row (survive crashes, continue on resume)
 # data
 dataset = 'openwebtext'
 gradient_accumulation_steps = 5 * 8 # used to simulate larger batch sizes
 batch_size = 12 # if gradient_accumulation_steps > 1, this is the micro-batch size
 block_size = 1024
+sequential_train_data = False # depth study: if True, read train.bin front to back once instead of random windows
 # model
 n_layer = 12
 n_head = 12
@@ -100,6 +102,10 @@ config = {k: globals()[k] for k in config_keys} # will be useful for logging
 # -----------------------------------------------------------------------------
 
 assert not (never_save_checkpoint and always_save_checkpoint)
+### Begin depth-study code ###
+# config/depth/common.py sets learning_rate = -1.0 so that a run can't silently use a default LR
+assert learning_rate > 0, "set the learning rate with --learning_rate=..."
+### End depth-study code ###
 
 # various inits, derived attributes, I/O setup
 ddp = int(os.environ.get('RANK', -1)) != -1 # is this a ddp run?
@@ -136,16 +142,34 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 
 # poor man's data loader
 data_dir = os.path.join('data', dataset)
-def get_batch(split):
+train_batches_read = 0 # number of sequential train micro-batches read so far (per process)
+def get_batch(split, generator=None):
+    global train_batches_read
     # We recreate np.memmap every batch to avoid a memory leak, as per
     # https://stackoverflow.com/questions/45132940/numpy-memmap-memory-usage-want-to-iterate-once/61472122#61472122
     if split == 'train':
         data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
     else:
         data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
-    ix = torch.randint(len(data) - block_size, (batch_size,))
-    x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
-    y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
+    ### Begin depth-study code ###
+    if split == 'train' and sequential_train_data and generator is None:
+        # one pass, no repeats: micro-batch k takes the next batch_size*block_size tokens of train.bin.
+        # every run sees the same tokens in the same order (step s always reads tokens
+        # [s*tokens_per_iter, (s+1)*tokens_per_iter)), whatever the micro-batch size.
+        # (generator is not None for the train-loss estimate in estimate_loss, which stays random)
+        k = train_batches_read * ddp_world_size + seed_offset # seed_offset = this process's DDP rank (0 without DDP)
+        start = k * batch_size * block_size
+        end = start + batch_size * block_size + 1 # +1 for the shifted targets
+        assert end <= len(data), f"train.bin has only {len(data):,} tokens, the run needs more. prepare more documents"
+        chunk = torch.from_numpy(data[start:end].astype(np.int64))
+        x = chunk[:-1].view(batch_size, block_size)
+        y = chunk[1:].view(batch_size, block_size)
+        train_batches_read += 1
+    ### End depth-study code ###
+    else:
+        ix = torch.randint(len(data) - block_size, (batch_size,), generator=generator)
+        x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
+        y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
     if device_type == 'cuda':
         # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
         x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
@@ -207,6 +231,7 @@ elif init_from == 'resume':
     model.load_state_dict(state_dict)
     iter_num = checkpoint['iter_num']
     best_val_loss = checkpoint['best_val_loss']
+    train_batches_read = iter_num * gradient_accumulation_steps # depth study: continue the sequential read where it stopped
 elif init_from.startswith('gpt2'):
     print(f"Initializing from OpenAI GPT-2 weights: {init_from}")
     # initialize from OpenAI GPT-2 weights
@@ -248,8 +273,13 @@ def estimate_loss():
     splits = ['train'] if skip_val_loss else ['train', 'val']
     for split in splits:
         losses = torch.zeros(eval_iters)
+        ### Begin depth-study code ###
+        # the same fixed windows at every eval and in every run (also across micro-batch sizes),
+        # so losses are compared on identical text. own generator: the training batches are unaffected
+        eval_generator = torch.Generator().manual_seed(1234)
+        ### End depth-study code ###
         for k in range(eval_iters):
-            X, Y = get_batch(split)
+            X, Y = get_batch(split, eval_generator)
             with ctx:
                 logits, loss = model(X, Y)
             losses[k] = loss.item()
@@ -283,6 +313,36 @@ if master_process:
         def log(log_dict):
             pass
         csv_logger = CSVLogWrapper(log, config=config, out_dir=out_dir)
+    ### Begin depth-study code ###
+    if run_log:
+        import csv, json
+        with open(os.path.join(out_dir, 'config.json'), 'w') as f:
+            json.dump(config, f, indent=2)
+        def open_run_log(filename, columns):
+            # out_dir/filename gets one row per call, flushed straight away, so it survives a crash.
+            # rows from iter_num on are dropped first: when resuming they were written after the
+            # checkpoint and are about to be redone, and a run from scratch (iter_num = 0) starts empty
+            path = os.path.join(out_dir, filename)
+            old_rows = []
+            if os.path.exists(path):
+                with open(path, newline='') as f:
+                    old_rows = [r for r in csv.DictReader(f) if int(r['iter']) < iter_num]
+            f = open(path, 'w', newline='')
+            writer = csv.DictWriter(f, fieldnames=columns, extrasaction='ignore', lineterminator='\n')
+            writer.writeheader()
+            writer.writerows(old_rows)
+            f.flush()
+            def write_row(row):
+                writer.writerow(row)
+                f.flush()
+            return write_row
+        coord_check_columns = [k + '_act_abs_mean' for k in ['token_embedding', 'attn', 'mlp', 'lm_head', 'last_layer']]
+        # train.csv: every log_interval steps. loss = mean over the step's micro-batches, tokens = seen so far
+        write_train_row = open_run_log('train.csv', ['iter', 'tokens', 'loss', 'lr', 'time_ms', 'mfu', 'peak_mem_gb'])
+        # eval.csv: every eval, and after the last step. tokens = seen before this eval
+        write_eval_row = open_run_log('eval.csv', ['iter', 'tokens', 'train_loss', 'val_loss', 'lr']
+                                      + (coord_check_columns if mup_enable_coord_check_logging else []))
+    ### End depth-study code ###
 
 # training loop
 X, Y = get_batch('train') # fetch the very first batch
@@ -299,7 +359,11 @@ while True:
         param_group['lr'] = lr * param_group.get('lr_scale', 1.0)
 
     # evaluate the loss on train/val sets and write checkpoints
-    if iter_num % eval_interval == 0 and master_process:
+    ### Begin depth-study code ###
+    # also evaluate after the last step (iter_num == max_iters), so every run logs its final val loss
+    # even when max_iters is not a multiple of eval_interval. tuning picks the LR from this value
+    if (iter_num % eval_interval == 0 or iter_num == max_iters) and master_process:
+    ### End depth-study code ###
         losses = estimate_loss()
         if np.isnan(losses['train']):
             raise Exception('NaN loss')
@@ -319,6 +383,12 @@ while True:
         if csv_log:
             csv_logger.log(log_dict)
             csv_logger.step()
+        ### Begin depth-study code ###
+        if run_log:
+            write_eval_row({'iter': iter_num, 'tokens': iter_num * tokens_per_iter, 'train_loss': losses['train'],
+                            'val_loss': losses['val'], 'lr': lr,
+                            **{k: v for k, v in log_dict.items() if k.endswith('_act_abs_mean')}})
+        ### End depth-study code ###
         if (not never_save_checkpoint) and (losses['val'] < best_val_loss or always_save_checkpoint):
             best_val_loss = losses['val']
             if iter_num > 0:
@@ -331,9 +401,19 @@ while True:
                     'config': config,
                 }
                 print(f"saving checkpoint to {out_dir}")
-                torch.save(checkpoint, os.path.join(out_dir, 'ckpt.pt'))
+                ### Begin depth-study code ###
+                # write to a temporary file, then rename: a crash during saving can't corrupt the last good checkpoint
+                torch.save(checkpoint, os.path.join(out_dir, 'ckpt.pt.tmp'))
+                os.replace(os.path.join(out_dir, 'ckpt.pt.tmp'), os.path.join(out_dir, 'ckpt.pt'))
+                ### End depth-study code ###
     if iter_num == 0 and eval_only:
         break
+    ### Begin depth-study code ###
+    # stop right after the final eval, so a run trains exactly max_iters steps (iters 0 .. max_iters - 1).
+    # (before, it also took an extra step at iter max_iters, which with min_lr = 0 only wasted tokens)
+    if iter_num == max_iters:
+        break
+    ### End depth-study code ###
 
     if mup_enable_coord_check_logging:
         coord_check_dict = {
@@ -363,6 +443,7 @@ while True:
 
     # forward backward update, with optional gradient accumulation to simulate larger batch size
     # and using the GradScaler if data type is float16
+    step_loss = torch.zeros((), device=device) # depth study: sum of loss / grad_accum = mean loss of this step
     for micro_step in range(gradient_accumulation_steps):
         if ddp:
             # in DDP training we only need to sync gradients at the last micro step.
@@ -373,6 +454,7 @@ while True:
         with ctx:
             logits, loss = model(X, Y)
             loss = loss / gradient_accumulation_steps # scale the loss to account for gradient accumulation
+        step_loss += loss.detach()
         # immediately async prefetch next batch while model is doing the forward pass on the GPU
         X, Y = get_batch('train')
         # backward pass, with gradient scaling if training in fp16
@@ -393,12 +475,20 @@ while True:
     t0 = t1
     if iter_num % log_interval == 0 and master_process:
         # get loss as float. note: this is a CPU-GPU sync point
-        # scale up to undo the division above, approximating the true total loss (exact would have been a sum)
-        lossf = loss.item() * gradient_accumulation_steps
+        ### Begin depth-study code ###
+        # mean over all micro-batches of the step (was: the last micro-batch only)
+        lossf = step_loss.item()
+        peak_mem_gb = torch.cuda.max_memory_allocated() / 1e9 if device_type == 'cuda' else 0.0
+        ### End depth-study code ###
         if local_iter_num >= 5: # let the training loop settle a bit
             mfu = raw_model.estimate_mfu(batch_size * gradient_accumulation_steps, dt)
             running_mfu = mfu if running_mfu == -1.0 else 0.9*running_mfu + 0.1*mfu
-        print(f"iter {iter_num}: loss {lossf:.4f}, time {dt*1000:.2f}ms, mfu {running_mfu*100:.2f}%")
+        print(f"iter {iter_num}: loss {lossf:.4f}, time {dt*1000:.2f}ms, mfu {running_mfu*100:.2f}%, peak mem {peak_mem_gb:.1f}GB")
+        ### Begin depth-study code ###
+        if run_log:
+            write_train_row({'iter': iter_num, 'tokens': (iter_num + 1) * tokens_per_iter, 'loss': lossf, 'lr': lr,
+                             'time_ms': dt * 1000, 'mfu': running_mfu * 100, 'peak_mem_gb': peak_mem_gb})
+        ### End depth-study code ###
     iter_num += 1
     local_iter_num += 1
 

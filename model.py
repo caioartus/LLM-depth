@@ -28,6 +28,41 @@ class LayerNorm(nn.Module):
         return F.layer_norm(input, self.weight.shape, self.weight, self.bias, 1e-5)
 
 
+### Begin RoPE code ###
+# Rotary position embeddings (RoPE, Su et al. 2021, https://arxiv.org/abs/2104.09864).
+# Replaces GPT-2's learned position embedding table (wpe). Instead of adding a position
+# vector to the input once, every attention layer rotates q and k by an angle that depends
+# on the token's position, so q·k only depends on the *relative* distance between tokens.
+# RoPE has no trainable parameters, so muP / CompleteP scaling does not touch it.
+#
+# The head dimension is split into two halves (x1, x2), and pair i = (x1[i], x2[i]) is
+# rotated by angle pos * theta_i, with theta_i = base^(-2i / head_dim). This is the
+# "rotate half" layout used by GPT-NeoX and Llama (HF).
+
+
+def precompute_rope_cos_sin(head_dim, max_seq_len, base=10000.0):
+    """Returns cos and sin of shape (max_seq_len, head_dim // 2)."""
+    assert head_dim % 2 == 0, "RoPE needs an even head dimension"
+    inv_freq = 1.0 / (
+        base ** (torch.arange(0, head_dim, 2).float() / head_dim)
+    )  # (hs/2,)
+    pos = torch.arange(max_seq_len).float()  # (T,)
+    angles = torch.outer(pos, inv_freq)  # (T, hs/2), angle for every (position, pair)
+    return angles.cos(), angles.sin()
+
+
+def apply_rope(x, cos, sin):
+    """Rotates x of shape (B, nh, T, hs) using cos/sin of shape (T, hs/2)."""
+    x1, x2 = x.chunk(2, dim=-1)  # each (B, nh, T, hs/2)
+    cos = cos.to(x.dtype)  # match bf16 under autocast, sdpa needs q, k, v in one dtype
+    sin = sin.to(x.dtype)
+    # 2D rotation of each pair: (x1, x2) -> (x1 cos - x2 sin, x1 sin + x2 cos)
+    return torch.cat((x1 * cos - x2 * sin, x1 * sin + x2 * cos), dim=-1)
+
+
+### End RoPE code ###
+
+
 class CausalSelfAttention(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -44,6 +79,15 @@ class CausalSelfAttention(nn.Module):
         self.dropout = config.dropout
         self.mup_enabled = config.mup_enabled
         self.mup_disable_attention_scaling = config.mup_disable_attention_scaling
+        ### Begin RoPE code ###
+        # cos/sin tables for every position up to block_size. persistent=False: they are
+        # recomputed at init, not saved in checkpoints, but still move with model.to(device)
+        cos, sin = precompute_rope_cos_sin(
+            config.n_embd // config.n_head, config.block_size, config.rope_base
+        )
+        self.register_buffer("rope_cos", cos, persistent=False)
+        self.register_buffer("rope_sin", sin, persistent=False)
+        ### End RoPE code ###
         # flash attention make GPU go brrrrr but support is only in PyTorch >= 2.0
         self.flash = hasattr(torch.nn.functional, "scaled_dot_product_attention")
         if not self.flash:
@@ -74,6 +118,12 @@ class CausalSelfAttention(nn.Module):
         v = v.view(B, T, self.n_head, C // self.n_head).transpose(
             1, 2
         )  # (B, nh, T, hs)
+
+        ### Begin RoPE code ###
+        # rotate queries and keys by their position (values are not rotated)
+        q = apply_rope(q, self.rope_cos[:T], self.rope_sin[:T])
+        k = apply_rope(k, self.rope_cos[:T], self.rope_sin[:T])
+        ### End RoPE code ###
 
         if self.mup_enabled and not self.mup_disable_attention_scaling:
             ### Begin muP code ###
@@ -157,6 +207,7 @@ class GPTConfig:
     dropout: float = 0.0
     bias: bool = True  # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
     init_std: float = 0.02
+    rope_base: float = 10000.0  # RoPE: base of the rotation frequencies (10000 as in RoFormer / Llama 1-2)
     mup_enabled: bool = (
         False  # Whether to use muP. If False then all other mup variables are ignored
     )
@@ -182,7 +233,8 @@ class GPT(nn.Module):
         self.transformer = nn.ModuleDict(
             dict(
                 wte=nn.Embedding(config.vocab_size, config.n_embd),
-                wpe=nn.Embedding(config.block_size, config.n_embd),
+                # RoPE: the learned position table wpe was removed here, positions are
+                # handled inside attention (see apply_rope)
                 drop=nn.Dropout(config.dropout),
                 h=nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
                 ln_f=LayerNorm(config.n_embd, bias=config.bias),
@@ -228,13 +280,12 @@ class GPT(nn.Module):
     def get_num_params(self, non_embedding=True):
         """
         Return the number of parameters in the model.
-        For non-embedding count (default), the position embeddings get subtracted.
-        The token embeddings would too, except due to the parameter sharing these
-        params are actually used as weights in the final layer, so we include them.
+        RoPE: there is no position embedding table any more, so non_embedding no longer
+        subtracts anything. The token embeddings are still included, because due to the
+        parameter sharing they are also used as weights in the final layer.
+        (non_embedding is kept so existing callers still work.)
         """
         n_params = sum(p.numel() for p in self.parameters())
-        if non_embedding:
-            n_params -= self.transformer.wpe.weight.numel()
         return n_params
 
     def _init_weights(self, module):
@@ -246,17 +297,17 @@ class GPT(nn.Module):
             torch.nn.init.normal_(module.weight, mean=0.0, std=self.config.init_std)
 
     def forward(self, idx, targets=None):
-        device = idx.device
         b, t = idx.size()
         assert t <= self.config.block_size, (
             f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
         )
-        pos = torch.arange(0, t, dtype=torch.long, device=device)  # shape (t)
-
         # forward the GPT model itself
         tok_emb = self.transformer.wte(idx)  # token embeddings of shape (b, t, n_embd)
-        pos_emb = self.transformer.wpe(pos)  # position embeddings of shape (t, n_embd)
-        x = self.transformer.drop((tok_emb + pos_emb))
+        ### Begin RoPE code ###
+        # no position embedding is added here any more (was: tok_emb + wpe(pos)),
+        # positions enter through the q/k rotation in every attention layer
+        x = self.transformer.drop(tok_emb)
+        ### End RoPE code ###
         if self.config.mup_enabled:
             ### Begin muP code ###
             x *= self.config.mup_input_alpha
@@ -291,16 +342,25 @@ class GPT(nn.Module):
         # but want to use a smaller block size for some smaller, simpler model
         assert block_size <= self.config.block_size
         self.config.block_size = block_size
-        self.transformer.wpe.weight = nn.Parameter(
-            self.transformer.wpe.weight[:block_size]
-        )
         for block in self.transformer.h:
+            ### Begin RoPE code ###
+            # crop the cos/sin tables instead of the old wpe table
+            block.attn.rope_cos = block.attn.rope_cos[:block_size]
+            block.attn.rope_sin = block.attn.rope_sin[:block_size]
+            ### End RoPE code ###
             if hasattr(block.attn, "bias"):
                 block.attn.bias = block.attn.bias[:, :, :block_size, :block_size]
 
     @classmethod
     def from_pretrained(cls, model_type, override_args=None):
         assert model_type in {"gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"}
+        ### Begin RoPE code ###
+        # OpenAI's GPT-2 weights were trained with learned position embeddings (wpe),
+        # which this model no longer has, so they cannot be loaded meaningfully
+        raise NotImplementedError(
+            "from_pretrained is disabled: this model uses RoPE, GPT-2 checkpoints use learned position embeddings"
+        )
+        ### End RoPE code ###
         override_args = override_args or {}  # default to empty dict
         # only dropout can be overridden see more notes below
         assert all(k == "dropout" for k in override_args)
@@ -385,7 +445,7 @@ class GPT(nn.Module):
             hidden_bias_params = []
             final_ln_params = []
             for n, p in param_dict.items():
-                if n in ("transformer.wte.weight", "transformer.wpe.weight"):
+                if n == "transformer.wte.weight":  # RoPE: wpe no longer exists
                     emb_params.append(p)
                 elif ".ln_" in n and not ".ln_f." in n:
                     hidden_ln_params.append(p)
