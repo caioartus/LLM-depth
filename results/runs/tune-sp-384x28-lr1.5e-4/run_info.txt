@@ -1,0 +1,4 @@
+=== attempt: job 1018885, started Mon Oct 26 18:26:48 +08 2026
+name:    tune-sp-384x28-lr1.5e-4
+commit:  9af88a4
+command: config/depth/sp/384x28.py config/depth/tune.py --learning_rate=1.5e-4
