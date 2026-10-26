@@ -9,11 +9,36 @@ https://github.com/huggingface/transformers/blob/main/src/transformers/models/gp
 
 import math
 import inspect
+import re
 from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+
+
+### Begin depth-study code ###
+def gpu_peak_flops():
+    """bf16 dense peak FLOP/s of GPU 0, from its name (NVIDIA spec sheets). None if unknown or no GPU.
+    A MIG slice (e.g. "... MIG 3g.47gb") gets its share of the 7 compute slices."""
+    if not torch.cuda.is_available():
+        return None
+    name = torch.cuda.get_device_name(0)
+    if "GH200" in name:
+        peak = 989e12
+    elif "H100" in name and "NVL" in name:
+        peak = 835e12
+    elif "H100" in name and "PCIe" in name:
+        peak = 756e12
+    elif "H100" in name:  # SXM / HBM3
+        peak = 989e12
+    elif "A100" in name:
+        peak = 312e12
+    else:
+        return None
+    mig = re.search(r"MIG (\d)g\.", name)
+    return peak * int(mig.group(1)) / 7 if mig else peak
+### End depth-study code ###
 
 
 class LayerNorm(nn.Module):
@@ -581,15 +606,22 @@ class GPT(nn.Module):
         """estimate model flops utilization (MFU) in units of A100 bfloat16 peak FLOPS"""
         # first estimate the number of flops we do per iteration.
         # see PaLM paper Appendix B as ref: https://arxiv.org/abs/2204.02311
-        N = self.get_num_params()
         cfg = self.config
-        L, H, Q, T = cfg.n_layer, cfg.n_head, cfg.n_embd // cfg.n_head, cfg.block_size
-        flops_per_token = 6 * N + 12 * L * H * Q * T
+        L, T = cfg.n_layer, cfg.block_size
+        ### Begin depth-study code ###
+        # C_tok from CLAUDE.md "Compute accounting": 6 P_ne + 6 d V + 6 L T d, with P_ne = 12 d^2 L and the
+        # attention term halved because attention is causal. was: 6 N + 12 L H Q T (all params, full attention)
+        d, V = cfg.n_embd, cfg.vocab_size
+        flops_per_token = 6 * 12 * d**2 * L + 6 * d * V + 6 * L * T * d
+        ### End depth-study code ###
         flops_per_fwdbwd = flops_per_token * T
         flops_per_iter = flops_per_fwdbwd * fwdbwd_per_iter
         # express our flops throughput as ratio of A100 bfloat16 peak flops
         flops_achieved = flops_per_iter * (1.0 / dt)  # per second
-        flops_promised = 312e12  # A100 GPU bfloat16 peak flops is 312 TFLOPS
+        ### Begin depth-study code ###
+        # the peak of the GPU this runs on (was: always the A100's 312 TFLOPS). nan if the GPU is unknown
+        flops_promised = gpu_peak_flops() or float("nan")
+        ### End depth-study code ###
         mfu = flops_achieved / flops_promised
         return mfu
 

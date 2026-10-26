@@ -22,7 +22,12 @@ bias = False
 init_std = 0.02
 
 # batch: 128 sequences x 2048 tokens = 262,144 tokens per step for every shape and condition.
-# batch_size is the micro-batch (chosen per shape for memory), gradient accumulation makes up the rest
+# batch_size is the micro-batch (chosen per shape for memory), gradient accumulation makes up the rest.
+# the shape files size it for a 40GB A100; on a GPU with >= 75GB (A100-80, H100-96) it is doubled.
+# only the effective batch matters, so this changes speed, not results
+if (not globals().get("_keep_micro_batch") and torch.cuda.is_available()
+        and torch.cuda.get_device_properties(0).total_memory >= 75e9 and 128 % (2 * batch_size) == 0):
+    batch_size *= 2
 assert 128 % batch_size == 0
 gradient_accumulation_steps = 128 // batch_size
 

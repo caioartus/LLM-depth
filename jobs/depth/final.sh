@@ -7,7 +7,8 @@
 # Usage (from the repo root):
 #   uv run --frozen python analysis/collect_results.py   # refresh results/best_lr.csv first
 #   DRY_RUN=1 jobs/depth/final.sh                         # print the sbatch commands without submitting
-#   jobs/depth/final.sh
+#   jobs/depth/final.sh                                   # on a 96GB H100
+#   GPU=gpu:a100-80:1 jobs/depth/final.sh                 # on another GPU type (sinfo -o "%P %G")
 #
 # Run names: sp-512x16 (shared by (a) and (b)), sp-transfer-<shape>, sp-tuned-<shape>, completep-<shape>.
 # A crashed run is resumed by running this script again (finished runs just stop at their last step).
@@ -38,9 +39,14 @@ for SHAPE in "${OTHER_SHAPES[@]}"; do
 done
 echo "SP LR (512x16): $SP_LR   CompleteP eta_base (512x16): $COMPLETEP_LR"
 
-# full runs take ~2-4 h on an A100 (deep shapes are slower), so raise train.sbatch's 2 h limit.
-# sbatch reads this variable and it overrides the #SBATCH --time line
+# full runs take ~2-6 h on an A100 (deep shapes are slower), so raise train.sbatch's 2 h limit.
+# sbatch reads these variables and they override the #SBATCH --time and --gres lines.
+# all final runs go on the same GPU type, so their wall-clock times can be compared. the fastest in
+# gpu-long is the 96GB H100 (h100-47 are MIG halves). another GPU: GPU=gpu:a100-80:1 jobs/depth/final.sh
+# (on >= 75GB GPUs config/depth/common.py doubles the micro-batch; MFU uses the GPU's own peak)
 export SBATCH_TIMELIMIT=08:00:00
+export SBATCH_GRES="${GPU:-gpu:h100-96:1}"
+echo "GPU: $SBATCH_GRES"
 
 submit() {
     if [[ -n "${DRY_RUN:-}" ]]; then echo "jobs/submit.sh $*"; else jobs/submit.sh "$@"; fi

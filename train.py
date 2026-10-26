@@ -180,6 +180,11 @@ def get_batch(split, generator=None):
 # init these up here, can override if init_from='resume' (i.e. from a checkpoint)
 iter_num = 0
 best_val_loss = 1e9
+### Begin depth-study code ###
+# wall-clock of the run, summed over all attempts (crash + resume), saved in the checkpoint.
+# train_time_s: training steps only (no evals, no checkpointing, no startup/compile). wall_time_s: everything
+train_time_s, wall_time_s = 0.0, 0.0
+### End depth-study code ###
 
 # attempt to derive vocab_size from the dataset
 meta_path = os.path.join(data_dir, 'meta.pkl')
@@ -232,6 +237,8 @@ elif init_from == 'resume':
     iter_num = checkpoint['iter_num']
     best_val_loss = checkpoint['best_val_loss']
     train_batches_read = iter_num * gradient_accumulation_steps # depth study: continue the sequential read where it stopped
+    # depth study: the timers continue from the checkpoint (time between a crash and the resume is not counted)
+    train_time_s, wall_time_s = checkpoint.get('train_time_s', 0.0), checkpoint.get('wall_time_s', 0.0)
 elif init_from.startswith('gpt2'):
     print(f"Initializing from OpenAI GPT-2 weights: {init_from}")
     # initialize from OpenAI GPT-2 weights
@@ -316,8 +323,11 @@ if master_process:
     ### Begin depth-study code ###
     if run_log:
         import csv, json
+        from model import gpu_peak_flops
         with open(os.path.join(out_dir, 'config.json'), 'w') as f:
-            json.dump(config, f, indent=2)
+            # plus the GPU, so analysis/collect_results.py computes MFU against the right peak
+            json.dump({**config, 'gpu_name': torch.cuda.get_device_name(0) if device_type == 'cuda' else 'cpu',
+                       'gpu_peak_flops': gpu_peak_flops()}, f, indent=2)
         def open_run_log(filename, columns):
             # out_dir/filename gets one row per call, flushed straight away, so it survives a crash.
             # rows from iter_num on are dropped first: when resuming they were written after the
@@ -337,16 +347,37 @@ if master_process:
                 f.flush()
             return write_row
         coord_check_columns = [k + '_act_abs_mean' for k in ['token_embedding', 'attn', 'mlp', 'lm_head', 'last_layer']]
-        # train.csv: every log_interval steps. loss = mean over the step's micro-batches, tokens = seen so far
-        write_train_row = open_run_log('train.csv', ['iter', 'tokens', 'loss', 'lr', 'time_ms', 'mfu', 'peak_mem_gb'])
+        # train.csv: every log_interval steps. loss = mean over the step's micro-batches, tokens = seen so far.
+        # time_ms, tok_per_s, mfu: averages over the steps since the previous row (evals excluded)
+        write_train_row = open_run_log('train.csv', ['iter', 'tokens', 'loss', 'lr', 'time_ms', 'tok_per_s', 'mfu',
+                                                     'train_time_s', 'peak_mem_gb'])
         # eval.csv: every eval, and after the last step. tokens = seen before this eval
-        write_eval_row = open_run_log('eval.csv', ['iter', 'tokens', 'train_loss', 'val_loss', 'lr']
+        write_eval_row = open_run_log('eval.csv', ['iter', 'tokens', 'train_loss', 'val_loss', 'lr', 'train_time_s', 'wall_time_s']
                                       + (coord_check_columns if mup_enable_coord_check_logging else []))
     ### End depth-study code ###
 
 # training loop
 X, Y = get_batch('train') # fetch the very first batch
 t0 = time.time()
+### Begin depth-study code ###
+# training time is measured over windows of steps: a window is closed (GPU synced) at every log step and
+# before every eval, so eval time never counts as training. the first step of each process (compile,
+# warm-up) is left out of train_time_s; it still counts in wall_time_s
+def cuda_sync():
+    if device_type == 'cuda':
+        torch.cuda.synchronize()
+wall_time_at_start, process_start = wall_time_s, time.time()
+window_start, window_steps = time.time(), 0
+def close_window():
+    # adds the window to train_time_s, returns its (steps, seconds) and opens a new one
+    global train_time_s, window_start, window_steps
+    cuda_sync()
+    now = time.time()
+    steps, seconds = window_steps, now - window_start
+    train_time_s += seconds
+    window_start, window_steps = now, 0
+    return steps, seconds
+### End depth-study code ###
 local_iter_num = 0 # number of iterations in the lifetime of this process
 raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
@@ -363,6 +394,8 @@ while True:
     # also evaluate after the last step (iter_num == max_iters), so every run logs its final val loss
     # even when max_iters is not a multiple of eval_interval. tuning picks the LR from this value
     if (iter_num % eval_interval == 0 or iter_num == max_iters) and master_process:
+        close_window() # the steps since the last log step count as training, the eval does not
+        wall_time_s = wall_time_at_start + time.time() - process_start
     ### End depth-study code ###
         losses = estimate_loss()
         if np.isnan(losses['train']):
@@ -386,7 +419,7 @@ while True:
         ### Begin depth-study code ###
         if run_log:
             write_eval_row({'iter': iter_num, 'tokens': iter_num * tokens_per_iter, 'train_loss': losses['train'],
-                            'val_loss': losses['val'], 'lr': lr,
+                            'val_loss': losses['val'], 'lr': lr, 'train_time_s': train_time_s, 'wall_time_s': wall_time_s,
                             **{k: v for k, v in log_dict.items() if k.endswith('_act_abs_mean')}})
         ### End depth-study code ###
         if (not never_save_checkpoint) and (losses['val'] < best_val_loss or always_save_checkpoint):
@@ -399,6 +432,8 @@ while True:
                     'iter_num': iter_num,
                     'best_val_loss': best_val_loss,
                     'config': config,
+                    'train_time_s': train_time_s, # depth study
+                    'wall_time_s': wall_time_s,
                 }
                 print(f"saving checkpoint to {out_dir}")
                 ### Begin depth-study code ###
@@ -406,6 +441,10 @@ while True:
                 torch.save(checkpoint, os.path.join(out_dir, 'ckpt.pt.tmp'))
                 os.replace(os.path.join(out_dir, 'ckpt.pt.tmp'), os.path.join(out_dir, 'ckpt.pt'))
                 ### End depth-study code ###
+        ### Begin depth-study code ###
+        cuda_sync()
+        window_start = time.time() # training time restarts after the eval and checkpoint
+        ### End depth-study code ###
     if iter_num == 0 and eval_only:
         break
     ### Begin depth-study code ###
@@ -473,21 +512,29 @@ while True:
     t1 = time.time()
     dt = t1 - t0
     t0 = t1
+    ### Begin depth-study code ###
+    window_steps += 1
+    if local_iter_num == 0 and master_process:
+        cuda_sync()
+        window_start, window_steps = time.time(), 0 # leave out the first step of this process (compile)
     if iter_num % log_interval == 0 and master_process:
         # get loss as float. note: this is a CPU-GPU sync point
-        ### Begin depth-study code ###
         # mean over all micro-batches of the step (was: the last micro-batch only)
         lossf = step_loss.item()
         peak_mem_gb = torch.cuda.max_memory_allocated() / 1e9 if device_type == 'cuda' else 0.0
-        ### End depth-study code ###
-        if local_iter_num >= 5: # let the training loop settle a bit
-            mfu = raw_model.estimate_mfu(batch_size * gradient_accumulation_steps, dt)
-            running_mfu = mfu if running_mfu == -1.0 else 0.9*running_mfu + 0.1*mfu
-        print(f"iter {iter_num}: loss {lossf:.4f}, time {dt*1000:.2f}ms, mfu {running_mfu*100:.2f}%, peak mem {peak_mem_gb:.1f}GB")
-        ### Begin depth-study code ###
+        # step time, throughput and MFU averaged over the window since the last row (was: this one step,
+        # which after an eval included the eval, and MFU as a moving average)
+        steps, seconds = close_window()
+        timing = {}
+        if steps > 0:
+            step_s = seconds / steps
+            running_mfu = raw_model.estimate_mfu(batch_size * gradient_accumulation_steps, step_s)
+            timing = {'time_ms': step_s * 1000, 'tok_per_s': tokens_per_iter / step_s, 'mfu': running_mfu * 100}
+        print(f"iter {iter_num}: loss {lossf:.4f}, time {timing.get('time_ms', float('nan')):.2f}ms, "
+              f"mfu {timing.get('mfu', float('nan')):.2f}%, peak mem {peak_mem_gb:.1f}GB")
         if run_log:
             write_train_row({'iter': iter_num, 'tokens': (iter_num + 1) * tokens_per_iter, 'loss': lossf, 'lr': lr,
-                             'time_ms': dt * 1000, 'mfu': running_mfu * 100, 'peak_mem_gb': peak_mem_gb})
+                             **timing, 'train_time_s': train_time_s, 'peak_mem_gb': peak_mem_gb})
         ### End depth-study code ###
     iter_num += 1
     local_iter_num += 1

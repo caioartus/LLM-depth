@@ -9,7 +9,8 @@ Run from the repo root on the cluster whenever runs have finished, then commit r
 It writes
     results/runs/<name>/        train.csv, eval.csv, config.json, run_info.txt of every run
     results/coord_check/<name>.csv   eval.csv of every coordinate-check run
-    results/runs.csv            one row per run: kind, parameterization, shape, lr, status, final val loss
+    results/runs.csv            one row per run: kind, parameterization, shape, lr, status, final val loss,
+                                training / wall time (h), tokens/s and MFU over the whole run
     results/best_lr.csv         per (parameterization, shape): the tuned LR. jobs/depth/final.sh reads this
     results/best_lr.md          the same as a readable table, with every LR tried and the CLAUDE.md checks
 
@@ -25,6 +26,7 @@ from pathlib import Path
 OUT, RESULTS = Path("out"), Path("results")
 RESULTS.mkdir(exist_ok=True)
 REFERENCE_SHAPE = "512x16"  # the LR of conditions (a) and (c) is tuned here (CLAUDE.md)
+VOCAB, A100_PEAK = 50304, 312e12
 
 
 def read_csv(path):
@@ -55,6 +57,18 @@ for out_dir in sorted(OUT.glob("*/")):
 
     evals = read_csv(out_dir / "eval.csv") if (out_dir / "eval.csv").exists() else []
     finished = bool(evals) and int(evals[-1]["iter"]) == config["max_iters"]
+    # wall-clock and throughput over the whole run (train.py sums them over crash + resume).
+    # MFU uses C_tok from CLAUDE.md "Compute accounting" and the run's GPU peak (train.py writes it to
+    # config.json; runs from before that were all on A100-40s)
+    timing = {}
+    peak = config.get("gpu_peak_flops", A100_PEAK)
+    if finished and evals[-1].get("train_time_s"):
+        d, L, T = config["n_embd"], config["n_layer"], config["block_size"]
+        train_s = float(evals[-1]["train_time_s"])
+        tok_per_s = config["max_iters"] * config["batch_size"] * config["gradient_accumulation_steps"] * T / train_s
+        timing = {"train_time_h": f"{train_s / 3600:.3f}", "wall_time_h": f"{float(evals[-1]['wall_time_s']) / 3600:.3f}",
+                  "tok_per_s": f"{tok_per_s:.0f}",
+                  "mfu": f"{100 * tok_per_s * (6 * 12 * d**2 * L + 6 * d * VOCAB + 6 * L * T * d) / peak:.2f}" if peak else ""}
     runs.append({
         "name": out_dir.name,
         "kind": "tune" if out_dir.name.startswith("tune-") else "final",
@@ -68,6 +82,7 @@ for out_dir in sorted(OUT.glob("*/")):
         # not finished = still running, crashed, or diverged (train.py stops on a NaN loss)
         "status": "finished" if finished else "not finished",
         "final_val_loss": evals[-1]["val_loss"] if finished else "",
+        **{k: timing.get(k, "") for k in ["train_time_h", "wall_time_h", "tok_per_s", "mfu"]},
     })
 write_csv(RESULTS / "runs.csv", runs, list(runs[0]) if runs else ["name"])
 

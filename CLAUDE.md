@@ -143,10 +143,11 @@ Code changes for the study are marked `### Begin depth-study code ###` (train.py
   - `sequential_train_data`: reads train.bin once, front to back. Step s always gets tokens [s·262144, (s+1)·262144), whatever the micro-batch. Training resumes at the right position.
   - Evals use a fixed-seed generator, so the same 1,600 val windows are scored at every eval, in every run.
   - There is always an eval after the last step, and the run stops right after it, so exactly `max_iters` steps are trained.
-  - `run_log`: `out_dir/train.csv` every 10 steps (loss = mean over the step's micro-batches, tokens, lr, time, mfu, peak_mem_gb). `out_dir/eval.csv` at every eval (train/val loss, plus coordinate-check columns when enabled). Both are flushed row by row. On start, rows at or after the start iter are dropped, so a resumed run never has duplicate rows.
+  - `run_log`: `out_dir/train.csv` every 10 steps (loss = mean over the step's micro-batches, tokens, lr, time_ms / tok_per_s / mfu averaged over the steps since the previous row, cumulative train_time_s, peak_mem_gb). `out_dir/eval.csv` at every eval (train/val loss, train_time_s, wall_time_s, plus coordinate-check columns when enabled).
+  - Timing: `train_time_s` counts training steps only (evals, checkpointing and the first step of each process, i.e. compile, are left out); `wall_time_s` counts everything. Both are saved in the checkpoint and continue on resume. MFU (`model.estimate_mfu`) uses this spec's C_tok (causal attention term 6LTd; it was nanoGPT's 6N + 12LTd) and the bf16 dense peak of the GPU it runs on (`model.gpu_peak_flops`, from the GPU name; MIG slices get their share). `config.json` records `gpu_name` and `gpu_peak_flops`. Both are flushed row by row. On start, rows at or after the start iter are dropped, so a resumed run never has duplicate rows.
   - Checkpoints are saved atomically (tmp file + rename).
 - **config/depth/**:
-  - `common.py` holds the shared settings and derives `n_head`, `max_iters` (from the FLOP budget formula), warmup (10%) and `lr_decay_iters` from `n_embd`/`n_layer`. A shape file sets `n_embd`, `n_layer` and `batch_size` (the micro-batch: 8 for 256x64 and 384x28, 16 otherwise; not yet measured on the GPU), then execs common.py.
+  - `common.py` holds the shared settings and derives `n_head`, `max_iters` (from the FLOP budget formula), warmup (10%) and `lr_decay_iters` from `n_embd`/`n_layer`. A shape file sets `n_embd`, `n_layer` and `batch_size` (the micro-batch: 8 for 256x64 and 384x28, 16 otherwise, sized for an A100-40GB), then execs common.py. common.py doubles the micro-batch on GPUs with >= 75GB (A100-80, H100-96); the coordinate-check configs opt out with `_keep_micro_batch`. Only the effective batch (128) matters, and the eval windows are the same for any micro-batch.
   - `sp/<d>x<L>.py` and `completep/<d>x<L>.py` are the 5 shapes each. `completep_common.py` sets m_N = d/256, m_L = L/2, alpha = 1.
   - `tune.py` is appended after a shape config. It shrinks the run to `tune_fraction = 0.1` of the tokens, with the schedule compressed to match and no checkpoints.
   - `coord_check_common.py` and `{sp,completep}/coord_check.py`: 10 steps at a constant LR of 2^-8, with coordinate-check logging and compile off. The shape is passed as `--n_embd= --n_layer= --batch_size=` *before* the config file.
@@ -158,12 +159,13 @@ Code changes for the study are marked `### Begin depth-study code ###` (train.py
     - `smoke_test.sh`: 60-step runs of 256x64 and 1024x4.
     - `coord_check.sbatch`: SP and CompleteP, L = 2..64 at d = 256 and d = 256..1024 at L = 2, 3 seeds, output in `out/coord_check/`.
     - `tune.sh sp|completep [shape] [lrs]`: the CLAUDE.md grids, plus the edge-rule extra points.
-    - `final.sh`: reads `results/best_lr.csv`, and refuses if an LR is missing or on the grid edge.
+    - `final.sh`: reads `results/best_lr.csv`, and refuses if an LR is missing or on the grid edge. Submits all final runs on one GPU type, the 96GB H100 by default (`GPU=gpu:a100-80:1 jobs/depth/final.sh` for another), so wall-clock times are comparable. Tuning and the coordinate check run on A100-40s (train.sbatch / coord_check.sbatch).
     - `status.py`: sacct state, progress, losses and log age for every run; problems marked `!!`.
     - `DRY_RUN=1` prints a script's commands without submitting.
 - **analysis/**:
-  - `collect_results.py` copies the small logs from `out/` (gitignored) to `results/` (committed) and writes `results/runs.csv`, `best_lr.csv` and `best_lr.md`. `best_lr.md` holds the LRs tried per shape, the edge-rule flags, unfinished runs and the CompleteP transfer check.
+  - `collect_results.py` copies the small logs from `out/` (gitignored) to `results/` (committed) and writes `results/runs.csv` (one row per run, including training/wall time, tokens/s and MFU), `best_lr.csv` and `best_lr.md`. `best_lr.md` holds the LRs tried per shape, the edge-rule flags, unfinished runs and the CompleteP transfer check.
   - `plot_coord_check.py` writes `results/coord_check/plots/{depth,width}.png`.
+  - `tuning.ipynb` reads only `results/` and plots the LR sweeps: final val loss vs LR per shape, optimal LR vs shape (transfer), loss curves per run, and the LR schedule.
 
 ## Run names
 `tune-<sp|completep>-<d>x<L>-lr<lr>`, `sp-512x16` (shared by conditions a and b), `sp-transfer-<shape>`, `sp-tuned-<shape>`, `completep-<shape>`, `smoke-*` (ignored by collect). `collect_results.py` classifies runs by these prefixes.
