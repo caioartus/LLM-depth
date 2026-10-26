@@ -23,6 +23,7 @@ import shutil
 from pathlib import Path
 
 OUT, RESULTS = Path("out"), Path("results")
+RESULTS.mkdir(exist_ok=True)
 REFERENCE_SHAPE = "512x16"  # the LR of conditions (a) and (c) is tuned here (CLAUDE.md)
 
 

@@ -23,7 +23,7 @@
 
 set -euo pipefail
 
-DATASET="openwebtext"
+DATASET="slimpajama"
 if [[ $# -gt 0 && "$1" != --* ]]; then
     DATASET="$1"
     shift                            # everything after the dataset goes to prepare.py
