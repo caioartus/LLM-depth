@@ -49,6 +49,7 @@ wandb_run_name = 'gpt2' # 'run' + str(time.time())
 # csv logging
 csv_log = False # If enabled, logs stats to a csv file
 run_log = False # depth study: append train.csv / eval.csv in out_dir row by row (survive crashes, continue on resume)
+diag_interval = 0 # depth study: with run_log, every n steps write per-parameter gradient / Adam update stats to diag.csv (0 = off)
 # data
 dataset = 'openwebtext'
 gradient_accumulation_steps = 5 * 8 # used to simulate larger batch sizes
@@ -349,8 +350,12 @@ if master_process:
         coord_check_columns = [k + '_act_abs_mean' for k in ['token_embedding', 'attn', 'mlp', 'lm_head', 'last_layer']]
         # train.csv: every log_interval steps. loss = mean over the step's micro-batches, tokens = seen so far.
         # time_ms, tok_per_s, mfu: averages over the steps since the previous row (evals excluded)
-        write_train_row = open_run_log('train.csv', ['iter', 'tokens', 'loss', 'lr', 'time_ms', 'tok_per_s', 'mfu',
+        # grad_norm: global gradient norm before clipping (clipped to grad_clip when above it)
+        write_train_row = open_run_log('train.csv', ['iter', 'tokens', 'loss', 'lr', 'grad_norm', 'time_ms', 'tok_per_s', 'mfu',
                                                      'train_time_s', 'peak_mem_gb'])
+        if diag_interval > 0:
+            write_diag_row = open_run_log('diag.csv', ['iter', 'layer', 'kind', 'eps', 'lr', 'param_rms', 'grad_rms',
+                                                       'frac_g_below_eps', 'frac_sqrtv_below_eps', 'update_rms', 'update_over_lr'])
         # eval.csv: every eval, and after the last step. tokens = seen before this eval
         write_eval_row = open_run_log('eval.csv', ['iter', 'tokens', 'train_loss', 'val_loss', 'lr', 'train_time_s', 'wall_time_s']
                                       + (coord_check_columns if mup_enable_coord_check_logging else []))
@@ -380,6 +385,47 @@ def close_window():
 ### End depth-study code ###
 local_iter_num = 0 # number of iterations in the lifetime of this process
 raw_model = model.module if ddp else model # unwrap DDP container if needed
+### Begin depth-study code ###
+# diagnostics (CLAUDE.md "Diagnostics"): every diag_interval steps, one row per parameter tensor in diag.csv.
+#   grad_rms, frac_g_below_eps: the gradient Adam gets (mean over the step's micro-batches, after clipping)
+#     and the fraction of its entries with |g| < eps
+#   frac_sqrtv_below_eps: fraction of entries where Adam's denominator sqrt(v_hat) is below eps, i.e. where
+#     eps, not the gradient, sets the update size (what "gradient starvation" means for Adam)
+#   update_rms: RMS of the actual parameter change of this step; update_over_lr = update_rms / lr, which is
+#     ~1 while |g| >> eps (Adam normalises the gradient away) and shrinks once eps takes over
+# eps and lr are the tensor's own: CompleteP scales both per parameter group (model.configure_optimizers)
+param_group_of = {id(p): g for g in optimizer.param_groups for p in g['params']}
+def diag_name(name):
+    # 'transformer.h.3.attn.c_attn.weight' -> (3, 'attn.c_attn'), 'transformer.wte.weight' -> ('', 'wte'),
+    # biases keep their suffix ('attn.c_attn.bias')
+    parts = name.removeprefix('_orig_mod.').split('.') # torch.compile's wrapper adds the prefix
+    if parts[1] == 'h':
+        return int(parts[2]), '.'.join(parts[3:]).removesuffix('.weight')
+    return '', '.'.join(parts[1:]).removesuffix('.weight')
+def diag_before_step():
+    # gradient stats and a copy of the weights, so the update can be measured after optimizer.step()
+    stats, old = [], []
+    for _, p in raw_model.named_parameters():
+        g, eps = p.grad, param_group_of[id(p)]['eps']
+        stats.append(torch.stack([p.detach().pow(2).mean().sqrt(), g.pow(2).mean().sqrt(), (g.abs() < eps).float().mean()]))
+        old.append(p.detach().clone())
+    return stats, old
+def diag_after_step(stats, old):
+    values = []
+    for (_, p), s, p_old in zip(raw_model.named_parameters(), stats, old):
+        group, state = param_group_of[id(p)], optimizer.state[p]
+        sqrt_v_hat = (state['exp_avg_sq'] / (1 - group['betas'][1] ** float(state['step']))).sqrt()
+        values.append(torch.cat([s, torch.stack([(sqrt_v_hat < group['eps']).float().mean(),
+                                                 (p.detach() - p_old).pow(2).mean().sqrt()])]))
+    values = torch.stack(values).tolist() # a single GPU -> CPU copy
+    for (name, p), v in zip(raw_model.named_parameters(), values):
+        layer, kind = diag_name(name)
+        group = param_group_of[id(p)]
+        write_diag_row({'iter': iter_num, 'layer': layer, 'kind': kind, 'eps': f"{group['eps']:.3g}", 'lr': f"{group['lr']:.4g}",
+                        'param_rms': f"{v[0]:.4g}", 'grad_rms': f"{v[1]:.4g}", 'frac_g_below_eps': f"{v[2]:.4g}",
+                        'frac_sqrtv_below_eps': f"{v[3]:.4g}", 'update_rms': f"{v[4]:.4g}",
+                        'update_over_lr': f"{v[4] / group['lr']:.4g}" if group['lr'] > 0 else ''})
+### End depth-study code ###
 running_mfu = -1.0
 coord_check_dict = None
 while True:
@@ -499,12 +545,22 @@ while True:
         # backward pass, with gradient scaling if training in fp16
         scaler.scale(loss).backward()
     # clip the gradient
+    grad_norm = None # depth study: the pre-clip norm, for train.csv
     if grad_clip != 0.0:
         scaler.unscale_(optimizer)
-        torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+        grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+    ### Begin depth-study code ###
+    diag_step = run_log and diag_interval > 0 and master_process and (iter_num % diag_interval == 0 or iter_num == max_iters - 1)
+    if diag_step:
+        diag_stats = diag_before_step()
+    ### End depth-study code ###
     # step the optimizer and scaler if training in fp16
     scaler.step(optimizer)
     scaler.update()
+    ### Begin depth-study code ###
+    if diag_step:
+        diag_after_step(*diag_stats)
+    ### End depth-study code ###
     # flush the gradients as soon as we can, no need for this memory anymore
     optimizer.zero_grad(set_to_none=True)
 
@@ -534,7 +590,7 @@ while True:
               f"mfu {timing.get('mfu', float('nan')):.2f}%, peak mem {peak_mem_gb:.1f}GB")
         if run_log:
             write_train_row({'iter': iter_num, 'tokens': (iter_num + 1) * tokens_per_iter, 'loss': lossf, 'lr': lr,
-                             **timing, 'train_time_s': train_time_s, 'peak_mem_gb': peak_mem_gb})
+                             'grad_norm': grad_norm.item() if grad_norm is not None else '', **timing, 'train_time_s': train_time_s, 'peak_mem_gb': peak_mem_gb})
         ### End depth-study code ###
     iter_num += 1
     local_iter_num += 1

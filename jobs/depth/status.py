@@ -55,6 +55,8 @@ for name in sorted(names):
     train, evals = last_row(out_dir / "train.csv"), last_row(out_dir / "eval.csv")
 
     progress = f"{int(train['iter']) + 1}/{config['max_iters']}" if train and "max_iters" in config else "-"
+    if evals and "max_iters" in config and int(evals["iter"]) == config["max_iters"]:
+        progress = f"{config['max_iters']}/{config['max_iters']}"  # finished (train.csv only logs every 10 steps)
     train_loss = f"{float(train['loss']):.3f}" if train else "-"
     val_loss = f"{float(evals['val_loss']):.3f}@{evals['iter']}" if evals else "-"
     age_min = (time.time() - (out_dir / "train.csv").stat().st_mtime) / 60 if train else None

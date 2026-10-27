@@ -63,6 +63,7 @@ eval_interval = 250
 eval_iters = 1600 // batch_size  # 1,600 fixed sequences (3.3M tokens) per split per eval, identical for every shape
 log_interval = 10
 run_log = True  # out_dir/train.csv (every 10 steps) and out_dir/eval.csv (every eval), see train.py
+diag_interval = 100  # out_dir/diag.csv: per-layer gradient RMS, |g| < eps, Adam update RMS (CLAUDE.md "Diagnostics")
 csv_log = False  # the old log.csv, replaced by run_log
 wandb_log = False
 wandb_project = "llm-depth"

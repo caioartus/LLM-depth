@@ -7,7 +7,7 @@ Run from the repo root on the cluster whenever runs have finished, then commit r
     git add results && git commit -m "results: ..."
 
 It writes
-    results/runs/<name>/        train.csv, eval.csv, config.json, run_info.txt of every run
+    results/runs/<name>/        train.csv, eval.csv, diag.csv, config.json, run_info.txt of every run
     results/coord_check/<name>.csv   eval.csv of every coordinate-check run
     results/runs.csv            one row per run: kind, parameterization, shape, lr, status, final val loss,
                                 training / wall time (h), tokens/s and MFU over the whole run
@@ -51,7 +51,7 @@ for out_dir in sorted(OUT.glob("*/")):
         continue  # not a depth-study run
     dest = RESULTS / "runs" / out_dir.name
     dest.mkdir(parents=True, exist_ok=True)
-    for name in ["train.csv", "eval.csv", "config.json", "run_info.txt"]:
+    for name in ["train.csv", "eval.csv", "diag.csv", "config.json", "run_info.txt"]:
         if (out_dir / name).exists():
             shutil.copy2(out_dir / name, dest / name)
 

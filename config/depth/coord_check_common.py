@@ -13,3 +13,4 @@ log_interval = 1
 always_save_checkpoint = False
 never_save_checkpoint = True
 compile = False  # the hooks find layers by module name, which torch.compile changes
+diag_interval = 0  # no gradient diagnostics, only the activation sizes
