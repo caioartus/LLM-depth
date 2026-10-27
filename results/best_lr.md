@@ -3,6 +3,36 @@
 Written by `analysis/collect_results.py` from the tuning runs (10% of each shape's tokens).
 Optimum = lowest val loss after the last step (CLAUDE.md "Tuning protocol").
 
+## completep 256x64
+
+| LR | val loss | |
+|---|---|---|
+| 0.0009766 | 5.7827 |  |
+| 0.001953 | 5.7533 |  |
+| 0.003906 | 5.6663 |  |
+| 0.007812 | 5.5612 | **best** |
+| 0.01562 | 5.9570 |  |
+
+## completep 512x16
+
+| LR | val loss | |
+|---|---|---|
+| 0.0009766 | 5.6913 |  |
+| 0.001953 | 5.5105 |  |
+| 0.003906 | 5.4523 |  |
+| 0.007812 | 5.4300 | **best** |
+| 0.01562 | 5.8776 |  |
+
+## completep 1024x4
+
+| LR | val loss | |
+|---|---|---|
+| 0.0009766 | 5.7199 |  |
+| 0.001953 | 5.4923 | **best** |
+| 0.003906 | 5.6820 |  |
+| 0.007812 | 5.6761 |  |
+| 0.01562 | 5.7153 |  |
+
 ## sp 256x64
 
 | LR | val loss | |
@@ -52,3 +82,10 @@ Optimum = lowest val loss after the last step (CLAUDE.md "Tuning protocol").
 | 0.0006 | 5.3972 |  |
 | 0.0012 | 5.3963 | **best** |
 | 0.0024 | 5.5421 |  |
+
+## CompleteP transfer check
+
+Optimum at the depth extremes vs 512x16 (more than one grid step = flag, CLAUDE.md "Sweeps").
+
+- 256x64: +0 grid steps (ok)
+- 1024x4: -2 grid steps ⚠ **FLAG: transfer failed or implementation bug**
