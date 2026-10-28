@@ -1,0 +1,4 @@
+=== attempt: job 1028546, started Wed Oct 28 11:02:02 +08 2026
+name:    tune-completep-384x28-lr0.0078125
+commit:  f8e2d27
+command: config/depth/completep/384x28.py config/depth/tune.py --learning_rate=0.0078125

@@ -13,6 +13,16 @@ Optimum = lowest val loss after the last step (CLAUDE.md "Tuning protocol").
 | 0.007812 | 5.5612 | **best** |
 | 0.01562 | 5.9570 |  |
 
+## completep 384x28
+
+| LR | val loss | |
+|---|---|---|
+| 0.0009766 | 5.7205 |  |
+| 0.001953 | 5.5744 |  |
+| 0.003906 | 5.4302 | **best** |
+| 0.007812 | 5.4584 |  |
+| 0.01562 | 5.7154 |  |
+
 ## completep 512x16
 
 | LR | val loss | |
@@ -22,6 +32,16 @@ Optimum = lowest val loss after the last step (CLAUDE.md "Tuning protocol").
 | 0.003906 | 5.4523 |  |
 | 0.007812 | 5.4300 | **best** |
 | 0.01562 | 5.8776 |  |
+
+## completep 640x10
+
+| LR | val loss | |
+|---|---|---|
+| 0.0009766 | 5.6446 |  |
+| 0.001953 | 5.4595 |  |
+| 0.003906 | 5.3959 | **best** |
+| 0.007812 | 5.6168 |  |
+| 0.01562 | 5.7027 |  |
 
 ## completep 1024x4
 
@@ -88,4 +108,6 @@ Optimum = lowest val loss after the last step (CLAUDE.md "Tuning protocol").
 Optimum of each shape vs 512x16 (more than one grid step = flag, CLAUDE.md "Sweeps").
 
 - 256x64: +0 grid steps (ok)
+- 384x28: -1 grid steps (ok)
+- 640x10: -1 grid steps (ok)
 - 1024x4: -2 grid steps ⚠ **FLAG: transfer failed or implementation bug**
