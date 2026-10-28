@@ -14,7 +14,7 @@
 #   4. optional, crash recovery: while a job is training, after its first "saving checkpoint"
 #      line in logs/smoke-*.out, cancel it (scancel <job id>), then run this script again.
 #      The cancelled run should print "resuming from ..." and continue from that step
-#      (the other one, if already finished, just resumes at its last step and stops).
+#      (the other one, if already finished, is skipped by jobs/submit.sh).
 #
 # Afterwards delete them: rm -r out/smoke-* logs/smoke-*
 

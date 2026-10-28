@@ -9,8 +9,8 @@ Run from the repo root on the cluster whenever runs have finished, then commit r
 It writes
     results/runs/<name>/        train.csv, eval.csv, diag.csv, config.json, run_info.txt of every run
     results/coord_check/<name>.csv   eval.csv of every coordinate-check run
-    results/runs.csv            one row per run: kind, parameterization, shape, lr, status, final val loss,
-                                training / wall time (h), tokens/s and MFU over the whole run
+    results/runs.csv            one row per run: kind, condition(s), parameterization, shape, lr, status,
+                                final val loss, training / wall time (h), tokens/s and MFU over the whole run
     results/best_lr.csv         per (parameterization, shape): the tuned LR. jobs/depth/final.sh reads this
     results/best_lr.md          the same as a readable table, with every LR tried and the CLAUDE.md checks
 
@@ -72,6 +72,7 @@ for out_dir in sorted(OUT.glob("*/")):
     runs.append({
         "name": out_dir.name,
         "kind": "tune" if out_dir.name.startswith("tune-") else "final",
+        "condition": "",  # filled in below, once the tuned LRs are known
         "parameterization": "completep" if config["depth_alpha_enabled"] else "sp",
         "shape": f"{config['n_embd']}x{config['n_layer']}",
         "d": config["n_embd"],
@@ -84,8 +85,6 @@ for out_dir in sorted(OUT.glob("*/")):
         "final_val_loss": evals[-1]["val_loss"] if finished else "",
         **{k: timing.get(k, "") for k in ["train_time_h", "wall_time_h", "tok_per_s", "mfu"]},
     })
-write_csv(RESULTS / "runs.csv", runs, list(runs[0]) if runs else ["name"])
-
 for cc_dir in sorted((OUT / "coord_check").glob("*/")):
     if (cc_dir / "eval.csv").exists():
         (RESULTS / "coord_check").mkdir(parents=True, exist_ok=True)
@@ -128,16 +127,25 @@ for (param, shape), group in sorted(groups.items(), key=lambda kv: (kv[0][0], -i
                       "val_loss": best["final_val_loss"], "lrs_tried": ";".join(f"{r['lr']:g}" for r in group),
                       "unfinished": unfinished, "on_edge": on_edge})
 
-# CompleteP transfer check: optimum at the extremes within one grid step (x2) of the reference shape
+# CompleteP transfer check: optimum of every other shape within one grid step (x2) of the reference shape
 if ("completep", REFERENCE_SHAPE) in best_lr:
     md += ["## CompleteP transfer check", "",
-           f"Optimum at the depth extremes vs {REFERENCE_SHAPE} (more than one grid step = flag, CLAUDE.md \"Sweeps\").", ""]
+           f"Optimum of each shape vs {REFERENCE_SHAPE} (more than one grid step = flag, CLAUDE.md \"Sweeps\").", ""]
     ref = best_lr[("completep", REFERENCE_SHAPE)]
-    for shape in ["256x64", "1024x4"]:
-        if ("completep", shape) in best_lr:
-            steps = math.log2(best_lr[("completep", shape)] / ref)
-            md.append(f"- {shape}: {steps:+.0f} grid steps " + ("⚠ **FLAG: transfer failed or implementation bug**" if abs(steps) > 1.01 else "(ok)"))
+    for shape in sorted({s for p, s in best_lr if p == "completep"} - {REFERENCE_SHAPE}, key=lambda s: -int(s.split("x")[1])):
+        steps = math.log2(best_lr[("completep", shape)] / ref)
+        md.append(f"- {shape}: {round(steps, 1):+g} grid steps " + ("⚠ **FLAG: transfer failed or implementation bug**" if abs(steps) > 1.01 else "(ok)"))
     md.append("")
+
+# conditions of each final run (CLAUDE.md "Conditions"), from its LR rather than its name, because one
+# run can serve two conditions (sp-512x16 is (a) and (b); completep-<shape> is also (d) when that shape's
+# tuned LR is the 512x16 one): transferred LR = (a) / (c), the shape's own tuned LR = (b) / (d)
+for run in runs:
+    if run["kind"] == "final":
+        transfer, tuned = ("a", "b") if run["parameterization"] == "sp" else ("c", "d")
+        run["condition"] = "+".join(c for c, shape in [(transfer, REFERENCE_SHAPE), (tuned, run["shape"])]
+                                    if best_lr.get((run["parameterization"], shape)) == run["lr"])
+write_csv(RESULTS / "runs.csv", runs, list(runs[0]) if runs else ["name"])
 
 write_csv(RESULTS / "best_lr.csv", best_rows, ["parameterization", "shape", "best_lr", "val_loss", "lrs_tried", "unfinished", "on_edge"])
 (RESULTS / "best_lr.md").write_text("\n".join(md))

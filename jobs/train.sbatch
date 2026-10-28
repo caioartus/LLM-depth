@@ -83,6 +83,23 @@ if [[ -f "$OUT_DIR/run_info.txt" ]]; then
     fi
 fi
 
+# a finished run is not trained again, and a run that would start over and overwrite its logs
+# needs RESTART=1 (jobs/run_state.sh; jobs/submit.sh checks the same before queueing)
+source jobs/run_state.sh
+case "$(run_state "$OUT_DIR")" in
+    finished)
+        echo "$OUT_DIR already finished, nothing to do"
+        exit 0
+        ;;
+    partial)
+        if [[ -z "${RESTART:-}" ]]; then
+            echo "$OUT_DIR has logs but no checkpoint, so this would start over and overwrite them." >&2
+            echo "to do that: RESTART=1 jobs/submit.sh $SLURM_JOB_NAME $RUN_COMMAND" >&2
+            exit 1
+        fi
+        ;;
+esac
+
 echo "job $SLURM_JOB_NAME ($SLURM_JOB_ID) on $(hostname) at $(date)"
 echo "config: $CONFIG  extra args: $*"
 nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv

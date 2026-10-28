@@ -1,17 +1,20 @@
 #!/bin/bash
-# Submit the 14 final runs of the depth/width study (CLAUDE.md "Final runs"), each at the full
+# Submit the final runs of the depth/width study (CLAUDE.md "Final runs"), each at the full
 # compute budget. The learning rates come from results/best_lr.csv, written by
 # analysis/collect_results.py from the tuning runs. The script refuses to submit if a needed
 # LR is missing or its optimum is on the edge of the grid (edge rule not done yet).
 #
 # Usage (from the repo root):
 #   uv run --frozen python analysis/collect_results.py   # refresh results/best_lr.csv first
-#   DRY_RUN=1 jobs/depth/final.sh                         # print the sbatch commands without submitting
+#   DRY_RUN=1 jobs/depth/final.sh                         # print the commands and each run's state, submit nothing
 #   jobs/depth/final.sh                                   # on a 96GB H100
 #   GPU=gpu:a100-80:1 jobs/depth/final.sh                 # on another GPU type (sinfo -o "%P %G")
 #
-# Run names: sp-512x16 (shared by (a) and (b)), sp-transfer-<shape>, sp-tuned-<shape>, completep-<shape>.
-# A crashed run is resumed by running this script again (finished runs just stop at their last step).
+# Run names: sp-512x16 (shared by (a) and (b)), sp-transfer-<shape>, sp-tuned-<shape>, completep-<shape>
+# (shared by (c) and (d) where the tuned LR is the 512x16 one), completep-tuned-<shape>.
+# Running it again only submits what is missing: finished, queued and running runs are skipped and
+# a crashed run resumes from its checkpoint (jobs/submit.sh). So after the CompleteP sweeps of
+# 384x28 and 640x10, running it again adds only the (d) runs.
 
 set -euo pipefail
 
@@ -33,9 +36,12 @@ OTHER_SHAPES=(256x64 384x28 640x10 1024x4)
 SP_LR=$(best_lr sp 512x16)                 # (a) SP-transfer: the SP optimum at 512x16, for every shape
 COMPLETEP_LR=$(best_lr completep 512x16)   # (c) CompleteP: the eta_base optimum at 512x16, for every shape
 SP_TUNED=()                                # (b) SP-tuned: the SP optimum of each shape
+COMPLETEP_TUNED=()                         # (d) CompleteP-tuned: the eta_base optimum of each shape
 for SHAPE in "${OTHER_SHAPES[@]}"; do
     LR=$(best_lr sp "$SHAPE")              # a plain assignment, so set -e stops here if the lookup fails
     SP_TUNED+=("$LR")
+    LR=$(best_lr completep "$SHAPE")
+    COMPLETEP_TUNED+=("$LR")
 done
 echo "SP LR (512x16): $SP_LR   CompleteP eta_base (512x16): $COMPLETEP_LR"
 
@@ -48,8 +54,10 @@ export SBATCH_TIMELIMIT=08:00:00
 export SBATCH_GRES="${GPU:-gpu:h100-96:1}"
 echo "GPU: $SBATCH_GRES"
 
+source jobs/run_state.sh
+FAILED=()
 submit() {
-    if [[ -n "${DRY_RUN:-}" ]]; then echo "jobs/submit.sh $*"; else jobs/submit.sh "$@"; fi
+    if [[ -n "${DRY_RUN:-}" ]]; then echo "jobs/submit.sh $*   [$(run_state "out/$1")]"; else jobs/submit.sh "$@" || FAILED+=("$1"); fi
 }
 
 # SP 512x16: both SP-transfer and SP-tuned
@@ -68,3 +76,17 @@ done
 for SHAPE in 256x64 384x28 512x16 640x10 1024x4; do
     submit "completep-$SHAPE" "config/depth/completep/$SHAPE.py" --learning_rate="$COMPLETEP_LR"
 done
+
+for i in "${!OTHER_SHAPES[@]}"; do
+    SHAPE=${OTHER_SHAPES[$i]}
+    if [[ "${COMPLETEP_TUNED[$i]}" == "$COMPLETEP_LR" ]]; then
+        echo "skipping completep-tuned-$SHAPE: its tuned LR equals the 512x16 one, so it is the same run as completep-$SHAPE"
+    else
+        submit "completep-tuned-$SHAPE" "config/depth/completep/$SHAPE.py" --learning_rate="${COMPLETEP_TUNED[$i]}"
+    fi
+done
+
+if [[ ${#FAILED[@]} -gt 0 ]]; then
+    echo "not submitted (see the messages above): ${FAILED[*]}" >&2
+    exit 1
+fi

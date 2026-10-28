@@ -1,7 +1,7 @@
 # Experiment spec: depth/width allocation at fixed compute (50M scale)
 
 ## Research question
-At fixed compute, what is the best depth/width allocation, and does it depend on the parameterization (SP with LR transferred from one shape, SP with per-shape tuned LR, CompleteP)? Testing Depth Delusion's claim (loss rises past a critical depth) is one prediction within this.
+At fixed compute, what is the best depth/width allocation, and does it depend on the parameterization (SP or CompleteP, each with the LR transferred from one shape or tuned per shape)? Testing Depth Delusion's claim (loss rises past a critical depth) is one prediction within this.
 
 ## Fixed setup (all runs)
 - Decoder-only transformer, pre-LN, tied embeddings (unembedding $= W_E^\top$), no dropout
@@ -59,8 +59,11 @@ Fallback if over budget: drop 640×10.
 - (a) SP-transfer: SP, LR tuned on 512×16 only, transferred unchanged to all other shapes. Mimics Depth Delusion's procedure: one LR ($3\times10^{-4}$) for every shape, and their only reported LR sweep is at depth 16 (App. A.1; width unstated, run at a different batch size than their main runs). Same protocol as (c), so (a) vs (c) isolates the parameterization.
 - (b) SP-tuned: SP, LR tuned per shape (upper bound for SP)
 - (c) CompleteP: $\alpha = 1$, LR tuned on 512×16 only, transferred unchanged to all other shapes
+- (d) CompleteP-tuned: CompleteP, $\eta_{\text{base}}$ tuned per shape (upper bound for CompleteP). Added after the first CompleteP sweeps (2026-10-27) found the 1024×4 optimum 2 grid steps below 512×16's ($2^{-9}$ vs $2^{-7}$, ≈0.18 val loss at the transferred LR)
 
-Reading the gaps: (a) → (b) = cost of SP's LR not transferring across shapes; (c) vs (b) = whether CompleteP's transfer matches per-shape tuning. A U-curve in (a) that disappears in (b)/(c) points to LR detuning rather than depth itself.
+The design is 2×2: {SP, CompleteP} × {transferred LR, per-shape tuned LR}. Reading the gaps: (a) → (b) = cost of SP's LR not transferring across shapes; (c) → (d) = the same for CompleteP; (b) vs (d) = the parameterizations compared with both properly tuned, so the depth conclusion does not depend on transfer being perfect. A U-curve in (a)/(c) that disappears in (b)/(d) points to LR detuning rather than depth itself.
+
+Why transfer across shapes at fixed size is in CompleteP's scope: its claim is that the optimal $\eta_{\text{base}}$ is invariant to width $N$ (the μP part) and depth $L$ (the $\alpha = 1$ part) separately; a reshape at fixed $P_{\text{ne}}$ is both at once (512×16 → 1024×4 is width ×2, depth ÷4), and total size never enters Table 1. The paper relies on this in its own $N{:}L$ study (Section 5 / Fig. 4a; App. G.1: one $\eta_{\text{base}} = 2^{-8}$ from $L_{\text{base}} = 2$ for every shape, 50M at 20 TPP, the same design as ours). Caveats: the guarantee is asymptotic ($N, L \to \infty$) and derived at a fixed token count (their Section 7), while our shapes get 1.28–1.55B tokens and are tuned at a 10% horizon; 1024×4 ($m_L = 2$) is furthest from the large-depth limit; and our tied embeddings (≈50% of 1024×4's parameters, LR $\eta_{\text{base}}$ unscaled in width) are a deviation from the paper.
 
 ## Tuning protocol (excluded from per-run budget)
 - Each tuning run: 10% of the shape's full tokens, schedule compressed to that length, same batch size as final runs
@@ -80,11 +83,11 @@ Edge rule: if the optimum falls on a grid edge, add one more ×2 point beyond th
 
 ### Sweeps
 - SP sweeps: all 5 shapes (25 short runs). 512×16 optimum → LR for (a); per-shape optima → LRs for (b)
-- CompleteP sweeps: 512×16 (sets LR for (c)), 256×64 and 1024×4 (transfer check) → 15 short runs
-- Transfer check: if the CompleteP optimum at 256×64 or 1024×4 differs from 512×16 by more than one grid step, flag it (implementation bug or failed transfer) and report. The SP sweeps give the matching picture for SP (expected to drift).
+- CompleteP sweeps: all 5 shapes (25 short runs). 512×16 optimum → LR for (c); per-shape optima → LRs for (d). (First 512×16, 256×64 and 1024×4; 384×28 and 640×10 added for (d), so both parameterizations have a 5-point optimal-LR-vs-shape curve.)
+- Transfer check: if the CompleteP optimum at any shape differs from 512×16 by more than one grid step, flag it (implementation bug or failed transfer) and report. The SP sweeps give the matching picture for SP (expected to drift). Result so far: 256×64 +0 steps, 1024×4 −2 steps (flagged; loss curves smooth, no instability).
 
-## Final runs (14, each at $C \approx 8.48\times10^{17}$, seed 0)
-(a) and (b) share the 512×16 run (same LR by construction).
+## Final runs (14 + up to 4 for (d), each at $C \approx 8.48\times10^{17}$, seed 0)
+(a) and (b) share the 512×16 run, and so do (c) and (d) (same LR by construction).
 1.  SP 512×16 (serves as both SP-transfer and SP-tuned)
 2.  SP-transfer 256×64
 3.  SP-transfer 384×28
@@ -99,11 +102,13 @@ Edge rule: if the optimum falls on a grid edge, add one more ×2 point beyond th
 12. CompleteP  512×16
 13. CompleteP  640×10
 14. CompleteP  1024×4
+15. –18. CompleteP-tuned 256×64, 384×28, 640×10, 1024×4 (added 2026-10-27)
 
-If an SP-tuned optimum equals the 512×16 LR for some shape, that SP-transfer and SP-tuned run coincide too; skip the duplicate.
+If a tuned optimum (SP or CompleteP) equals the 512×16 LR for some shape, the transfer and tuned runs coincide; skip the duplicate. From the sweeps so far: SP-tuned 640×10 and 1024×4 are skipped (1.2e-3 everywhere except 256×64 and 384×28 at 6e-4), CompleteP-tuned 256×64 is skipped, CompleteP-tuned 1024×4 runs at $2^{-9}$; 384×28 and 640×10 depend on their sweeps.
 
 Optional if time remains:
 - Seeds 1–2 for 384×28 and 512×16 (all 3 conditions)
+- CompleteP 512×4 diagnostic sweep (out of scope for now, 5 short runs of a 12.6M model, not a study shape, tuned with 512×16's token count): 512×16 → 512×4 changes only depth, 512×4 → 1024×4 only width. If the optimum shifts at 512×4, the 1024×4 drift is a shallow-depth (finite-$L$) effect; if not, it comes from width or the tied embedding.
 - $\epsilon$ ablation: SP-transfer 256×64 with $\epsilon = 10^{-8}$ (PyTorch default; also the value Depth Delusion reports). Tests whether a larger $\epsilon$ degrades deep models, i.e. whether $\epsilon$ alone can produce a depth penalty. Everything else unchanged.
 
 ## Diagnostics (logged in every run)
@@ -111,14 +116,14 @@ Optional if time remains:
 - Per-layer update RMS (Adam update magnitude), to see whether gradient decay translates into update decay
 
 ## Cost estimate
-- Final runs: 14 full-run equivalents
-- Tuning: 40 short runs × 10% = 4 full-run equivalents (+0.1 per edge extension)
-- Total ≈ 18 full-run equivalents ≈ 39 GPU-hours on A100 (at 35% MFU; more if deep shapes run at lower MFU)
+- Final runs: 14 full-run equivalents, + up to 4 for (d)
+- Tuning: 50 short runs × 10% = 5 full-run equivalents (+0.1 per edge extension)
+- Total ≈ 19–23 full-run equivalents (originally planned: 18) ≈ 39 GPU-hours on A100 (at 35% MFU; more if deep shapes run at lower MFU)
 - Optional $\epsilon$ ablation: +1 full-run equivalent
 
 ## Known limitations (to report)
 - LR tuned at a 10% horizon; optimal LR shifts with training length, but the bias is shared across shapes and conditions
-- CompleteP transfer verified only at the depth extremes
+- CompleteP's transfer guarantee is asymptotic and derived at a fixed token count; our shapes differ in tokens (iso-FLOP) and the shallowest (L = 4) is far from the large-depth limit (see "Conditions")
 - Single seed unless optional seed runs are done
 - Tied embeddings (CompleteP paper used untied)
 - Optimizer HPs taken from CompleteP, not tuned. Differences from Depth Delusion's reported setup (their Table 5; not independently verifiable, code unreleased): $\epsilon$ $10^{-16}$ vs $10^{-8}$ (tested by ablation); weight decay 0 vs 0.1; schedule 10% warmup + cosine to 0 vs 2,000-step warmup + cosine to $3\times10^{-5}$; seq length 2048 vs 1024 (tokens per step identical, 262,144); iso-FLOP tokens vs their fixed 6.4B tokens; condition (a) uses our own tuned LR, not their $3\times10^{-4}$.
@@ -149,27 +154,27 @@ Code changes for the study are marked `### Begin depth-study code ###` (train.py
   - Diagnostics (`diag_interval = 100` in common.py, off for the coordinate check): `out_dir/diag.csv`, long format, one row per parameter tensor every 100 steps and at the last step. Columns: iter, layer (block index, empty for wte / ln_f), kind (`attn.c_attn`, `mlp.c_proj`, `ln_1`, ...), the tensor's own eps and lr (CompleteP scales both per group), param_rms, grad_rms and frac_g_below_eps (the gradient Adam gets: mean over micro-batches, after clipping), frac_sqrtv_below_eps (fraction where Adam's denominator sqrt(v_hat) < eps), update_rms (actual parameter change of the step), update_over_lr. `train.csv` also has grad_norm (global norm before clipping). Verified: losses are identical with diagnostics on and off.
 - **config/depth/**:
   - `common.py` holds the shared settings and derives `n_head`, `max_iters` (from the FLOP budget formula), warmup (10%) and `lr_decay_iters` from `n_embd`/`n_layer`. A shape file sets `n_embd`, `n_layer` and `batch_size` (the micro-batch: 8 for 256x64 and 384x28, 16 otherwise, sized for an A100-40GB), then execs common.py. common.py doubles the micro-batch on GPUs with >= 75GB (A100-80, H100-96); the coordinate-check configs opt out with `_keep_micro_batch`. Only the effective batch (128) matters, and the eval windows are the same for any micro-batch.
-  - `sp/<d>x<L>.py` and `completep/<d>x<L>.py` are the 5 shapes each. `completep_common.py` sets m_N = d/256, m_L = L/2, alpha = 1.
+  - `sp/<d>x<L>.py` and `completep/<d>x<L>.py` are the 5 shapes each. `completep_common.py` sets m_N = d/256, m_L = L/2, alpha = 1. `completep/512x4.py` is the optional diagnostic shape (tuning only, not run for now): its run length is 512x16's, not the FLOP-budget one.
   - `tune.py` is appended after a shape config. It shrinks the run to `tune_fraction = 0.1` of the tokens, with the schedule compressed to match and no checkpoints.
   - `coord_check_common.py` and `{sp,completep}/coord_check.py`: 10 steps at a constant LR of 2^-8, with coordinate-check logging and compile off. The shape is passed as `--n_embd= --n_layer= --batch_size=` *before* the config file.
-  - SP-transfer and SP-tuned share configs and differ only in `--learning_rate`.
+  - SP-transfer and SP-tuned share configs and differ only in `--learning_rate`; so do CompleteP and CompleteP-tuned.
 - **jobs/**:
-  - `submit.sh NAME config [args]` submits a run. It refuses a name that is already queued or running.
-  - `train.sbatch` writes to `out/<name>/`. Resubmitting the same name and command resumes from `ckpt.pt`; a different command under an existing name is refused. `run_info.txt` has one block per attempt.
+  - `submit.sh NAME config [args]` submits a run. Protecting finished work comes first: a name that is queued, running or finished is skipped (exit 0, nothing touched), so every submit script can be rerun and only submits what is missing. A different command under an existing name (e.g. a changed LR) is refused, also when that run finished. A run with logs but no `ckpt.pt` (crashed/diverged tuning run) is refused, since rerunning it starts at step 0 and overwrites its logs; `RESTART=1` allows it. The state comes from `run_state.sh` (finished = last `eval.csv` iter equals `max_iters` in `config.json`).
+  - `train.sbatch` writes to `out/<name>/`. Resubmitting the same name and command resumes from `ckpt.pt`; a different command under an existing name is refused. It repeats the finished / partial check when the job starts (a run can finish while another copy waits in the queue). `run_info.txt` has one block per attempt.
   - `jobs/depth/`:
     - `smoke_test.sh`: 60-step runs of 256x64 and 1024x4.
-    - `coord_check.sbatch`: SP and CompleteP, L = 2..64 at d = 256 and d = 256..1024 at L = 2, 3 seeds, output in `out/coord_check/`.
-    - `tune.sh sp|completep [shape] [lrs]`: the CLAUDE.md grids, plus the edge-rule extra points.
-    - `final.sh`: reads `results/best_lr.csv`, and refuses if an LR is missing or on the grid edge. Submits all final runs on one GPU type, the 96GB H100 by default (`GPU=gpu:a100-80:1 jobs/depth/final.sh` for another), so wall-clock times are comparable. Tuning and the coordinate check run on A100-40s (train.sbatch / coord_check.sbatch).
+    - `coord_check.sbatch`: SP and CompleteP, L = 2..64 at d = 256 and d = 256..1024 at L = 2, 3 seeds, output in `out/coord_check/`. Finished seeds are skipped.
+    - `tune.sh sp|completep [shape] [lrs]`: the CLAUDE.md grids (5 shapes each), plus the edge-rule extra points. `tune.sh completep 512x4` runs the optional diagnostic sweep (not part of the plan for now).
+    - `final.sh`: reads `results/best_lr.csv`, and refuses (before submitting anything) if an LR is missing or on the grid edge. Submits (a)–(d); a tuned run whose LR equals the 512x16 one is skipped as a duplicate. Submits all final runs on one GPU type, the 96GB H100 by default (`GPU=gpu:a100-80:1 jobs/depth/final.sh` for another), so wall-clock times are comparable. Tuning and the coordinate check run on A100-40s (train.sbatch / coord_check.sbatch).
     - `status.py`: sacct state, progress, losses and log age for every run; problems marked `!!`.
-    - `DRY_RUN=1` prints a script's commands without submitting.
+    - `DRY_RUN=1` prints a script's commands and each run's state (finished / resume / partial / new) without submitting.
 - **analysis/**:
-  - `collect_results.py` copies the small logs from `out/` (gitignored) to `results/` (committed) and writes `results/runs.csv` (one row per run, including training/wall time, tokens/s and MFU), `best_lr.csv` and `best_lr.md`. `best_lr.md` holds the LRs tried per shape, the edge-rule flags, unfinished runs and the CompleteP transfer check.
+  - `collect_results.py` copies the small logs from `out/` (gitignored) to `results/` (committed) and writes `results/runs.csv` (one row per run, including training/wall time, tokens/s and MFU), `best_lr.csv` and `best_lr.md`. `best_lr.md` holds the LRs tried per shape, the edge-rule flags, unfinished runs and the CompleteP transfer check (every shape vs 512x16). `runs.csv` has a `condition` column for final runs (`a`, `b`, `c`, `d`, or `a+b` / `c+d` for a run that serves both), derived from the run's LR: the 512x16 optimum = transfer, the shape's own optimum = tuned.
   - `plot_coord_check.py` writes `results/coord_check/plots/{depth,width}.png`.
   - `tuning.ipynb` reads only `results/` and plots the LR sweeps: final val loss vs LR per shape, optimal LR vs shape (transfer), loss curves per run, and the LR schedule.
 
 ## Run names
-`tune-<sp|completep>-<d>x<L>-lr<lr>`, `sp-512x16` (shared by conditions a and b), `sp-transfer-<shape>`, `sp-tuned-<shape>`, `completep-<shape>`, `smoke-*` (ignored by collect). `collect_results.py` classifies runs by these prefixes.
+`tune-<sp|completep>-<d>x<L>-lr<lr>`, `sp-512x16` (shared by conditions a and b), `sp-transfer-<shape>`, `sp-tuned-<shape>`, `completep-<shape>` (c; also d where the tuned LR equals 512x16's), `completep-tuned-<shape>` (d), `smoke-*` (ignored by collect). `collect_results.py` classifies runs by these prefixes.
 
 ## Workflow on the cluster
 1. `sbatch jobs/prepare_data.sh slimpajama --num_docs 2000000`. That gives about 2.2B tokens; the longest run (384x28) needs 1.56B, and sequential reading asserts if train.bin is too short. Val is SlimPajama's own validation split.
@@ -177,10 +182,12 @@ Code changes for the study are marked `### Begin depth-study code ###` (train.py
 3. `sbatch jobs/depth/coord_check.sbatch`, then collect and `plot_coord_check.py`.
 4. `jobs/depth/tune.sh sp` and `jobs/depth/tune.sh completep`, then collect, apply the edge rule if flagged, and commit `results/`.
 5. `jobs/depth/final.sh`, then collect and commit.
+6. Added 2026-10-27, after (a)–(c) finals had run: `jobs/depth/tune.sh completep` (submits only the 10 missing 384x28 / 640x10 runs); collect; then `jobs/depth/final.sh` again, which skips every finished final run and submits only the (d) runs. Check with `DRY_RUN=1` first.
 
 ## Status (as of 2026-10-26)
 - Everything above was tested locally on CPU with fake data in a scratch copy: logs, exact step count, bit-identical resume, collect, final.sh, plot, the train.sbatch resume guard (with stub uv and nvidia-smi). Nothing has been run on the cluster yet. Not committed.
 - The "Diagnostics" section is implemented (2026-10-27, `diag_interval`, see the code map). Tuning runs started before that have no `diag.csv`. Not implemented: the optional SP + 1/d_head attention ablation.
+- Condition (d), the extra CompleteP sweeps, the optional 512x4 diagnostic config and the skip / refuse guards in `submit.sh` / `train.sbatch` (2026-10-27): tested locally in a scratch copy with stub squeue / sbatch / uv against copies of the real `results/runs/` logs (finished runs skipped, partial refused, checkpointed resumed, changed LR refused, only missing runs submitted). `tuning.ipynb` plots only the 5 study shapes (not 512x4).
 
 ## Decisions and open discrepancies (for the user to confirm)
 - **Tuning fraction:** 10% as this spec says. The user once said "20% I think"; to change it, edit `tune_fraction` in `config/depth/tune.py` and the text above.

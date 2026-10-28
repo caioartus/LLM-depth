@@ -34,6 +34,7 @@ if [[ ! -f data/slimpajama/train.bin ]]; then
 fi
 
 echo "job $SLURM_JOB_ID on $(hostname) at $(date)"
+source jobs/run_state.sh  # finished runs are skipped, so the job can be resubmitted after a crash
 
 for PARAM in sp completep; do
     for SHAPE in 256x2 256x4 256x8 256x16 256x32 256x64 512x2 1024x2; do
@@ -41,6 +42,10 @@ for PARAM in sp completep; do
             D=${SHAPE%x*}
             L=${SHAPE#*x}
             OUT_DIR="out/coord_check/$PARAM-$SHAPE-seed$SEED"
+            if [[ "$(run_state "$OUT_DIR")" == finished ]]; then
+                echo "=== $OUT_DIR already finished, skipping"
+                continue
+            fi
             echo "=== $OUT_DIR"
             # the shape goes *before* the config file, which derives the head count and multipliers from it
             uv run --frozen python train.py --n_embd="$D" --n_layer="$L" --batch_size=8 --seed="$SEED" \
