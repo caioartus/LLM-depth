@@ -1,0 +1,4 @@
+=== attempt: job 1022856, started Tue Oct 27 10:54:09 +08 2026
+name:    sp-512x16
+commit:  70315f3
+command: config/depth/sp/512x16.py --learning_rate=0.0012

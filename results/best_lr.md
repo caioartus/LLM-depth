@@ -85,7 +85,7 @@ Optimum = lowest val loss after the last step (CLAUDE.md "Tuning protocol").
 
 ## CompleteP transfer check
 
-Optimum at the depth extremes vs 512x16 (more than one grid step = flag, CLAUDE.md "Sweeps").
+Optimum of each shape vs 512x16 (more than one grid step = flag, CLAUDE.md "Sweeps").
 
 - 256x64: +0 grid steps (ok)
 - 1024x4: -2 grid steps ⚠ **FLAG: transfer failed or implementation bug**

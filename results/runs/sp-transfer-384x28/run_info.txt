@@ -1,0 +1,4 @@
+=== attempt: job 1022859, started Tue Oct 27 15:25:17 +08 2026
+name:    sp-transfer-384x28
+commit:  70315f3
+command: config/depth/sp/384x28.py --learning_rate=0.0012

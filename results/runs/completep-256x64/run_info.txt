@@ -1,0 +1,4 @@
+=== attempt: job 1022863, started Tue Oct 27 20:00:54 +08 2026
+name:    completep-256x64
+commit:  70315f3
+command: config/depth/completep/256x64.py --learning_rate=0.0078125
