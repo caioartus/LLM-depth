@@ -14,7 +14,10 @@ It writes
     results/best_lr.csv         per (parameterization, shape): the tuned LR. jobs/depth/final.sh reads this
     results/best_lr.md          the same as a readable table, with every LR tried and the CLAUDE.md checks
 
-Run kinds come from the names the scripts in jobs/depth/ give: tune-..., smoke-... (skipped), others are final runs.
+Run kinds come from the names the scripts in jobs/depth/ give: tune-... (LR sweeps), check-... (post-hoc
+full-length LR checks) and seed<n>-... (extra seeds of a final run), both from jobs/depth/extra.sh,
+smoke-... (skipped), others are final runs. Only final runs get a condition, so checks and extra seeds
+never enter conditions (a)-(d).
 """
 
 import csv
@@ -39,6 +42,16 @@ def write_csv(path, rows, columns):
         writer = csv.DictWriter(f, fieldnames=columns, lineterminator="\n")  # plain \n, so shell tools can read it
         writer.writeheader()
         writer.writerows(rows)
+
+
+def run_kind(name):
+    if name.startswith("tune-"):
+        return "tune"
+    if name.startswith("check-"):
+        return "check"
+    if name.startswith("seed"):
+        return "seed"
+    return "final"
 
 
 # ---- copy the logs of every run ----
@@ -71,7 +84,7 @@ for out_dir in sorted(OUT.glob("*/")):
                   "mfu": f"{100 * tok_per_s * (6 * 12 * d**2 * L + 6 * d * VOCAB + 6 * L * T * d) / peak:.2f}" if peak else ""}
     runs.append({
         "name": out_dir.name,
-        "kind": "tune" if out_dir.name.startswith("tune-") else "final",
+        "kind": run_kind(out_dir.name),
         "condition": "",  # filled in below, once the tuned LRs are known
         "parameterization": "completep" if config["depth_alpha_enabled"] else "sp",
         "shape": f"{config['n_embd']}x{config['n_layer']}",
@@ -84,6 +97,7 @@ for out_dir in sorted(OUT.glob("*/")):
         "status": "finished" if finished else "not finished",
         "final_val_loss": evals[-1]["val_loss"] if finished else "",
         **{k: timing.get(k, "") for k in ["train_time_h", "wall_time_h", "tok_per_s", "mfu"]},
+        "seed": config.get("seed", ""),
     })
 for cc_dir in sorted((OUT / "coord_check").glob("*/")):
     if (cc_dir / "eval.csv").exists():
