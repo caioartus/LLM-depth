@@ -1,0 +1,4 @@
+=== attempt: job 1058476, started Mon Nov  2 12:12:25 +08 2026
+name:    seed1-completep-512x16
+commit:  5e26491
+command: config/depth/completep/512x16.py --learning_rate=0.0078125 --seed=1

@@ -1,0 +1,4 @@
+=== attempt: job 1058474, started Mon Nov  2 09:23:35 +08 2026
+name:    check-sp-256x64-lr2.4e-3
+commit:  5e26491
+command: config/depth/sp/256x64.py --learning_rate=2.4e-3
