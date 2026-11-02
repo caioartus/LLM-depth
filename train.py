@@ -528,7 +528,7 @@ def close_window():
 local_iter_num = 0  # number of iterations in the lifetime of this process
 raw_model = model.module if ddp else model  # unwrap DDP container if needed
 ### Begin depth-study code ###
-# diagnostics (CLAUDE.md "Diagnostics"): every diag_interval steps, one row per parameter tensor in diag.csv.
+# diagnostics: every diag_interval steps, one row per parameter tensor in diag.csv.
 #   grad_rms, frac_g_below_eps: the gradient Adam gets (mean over the step's micro-batches, after clipping)
 #     and the fraction of its entries with |g| < eps
 #   frac_sqrtv_below_eps: fraction of entries where Adam's denominator sqrt(v_hat) is below eps, i.e. where

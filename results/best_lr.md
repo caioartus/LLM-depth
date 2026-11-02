@@ -1,7 +1,7 @@
 # Tuned learning rates
 
 Written by `analysis/collect_results.py` from the tuning runs (10% of each shape's tokens).
-Optimum = lowest val loss after the last step (CLAUDE.md "Tuning protocol").
+Optimum = lowest val loss after the last step.
 
 ## completep 256x64
 
@@ -105,7 +105,7 @@ Optimum = lowest val loss after the last step (CLAUDE.md "Tuning protocol").
 
 ## CompleteP transfer check
 
-Optimum of each shape vs 512x16 (more than one grid step = flag, CLAUDE.md "Sweeps").
+Optimum of each shape vs 512x16 (more than one grid step = flag).
 
 - 256x64: +0 grid steps (ok)
 - 384x28: -1 grid steps (ok)

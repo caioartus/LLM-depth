@@ -12,7 +12,7 @@ It writes
     results/runs.csv            one row per run: kind, condition(s), parameterization, shape, lr, status,
                                 final val loss, training / wall time (h), tokens/s and MFU over the whole run
     results/best_lr.csv         per (parameterization, shape): the tuned LR. jobs/depth/final.sh reads this
-    results/best_lr.md          the same as a readable table, with every LR tried and the CLAUDE.md checks
+    results/best_lr.md          the same as a readable table, with every LR tried, the edge-rule flags and the transfer check
 
 Run kinds come from the names the scripts in jobs/depth/ give: tune-... (LR sweeps), check-... (post-hoc
 full-length LR checks) and seed<n>-... (extra seeds of a final run), both from jobs/depth/extra.sh,
@@ -28,7 +28,7 @@ from pathlib import Path
 
 OUT, RESULTS = Path("out"), Path("results")
 RESULTS.mkdir(exist_ok=True)
-REFERENCE_SHAPE = "512x16"  # the LR of conditions (a) and (c) is tuned here (CLAUDE.md)
+REFERENCE_SHAPE = "512x16"  # the LR of conditions (a) and (c) is tuned here
 VOCAB, A100_PEAK = 50304, 312e12
 
 
@@ -71,7 +71,7 @@ for out_dir in sorted(OUT.glob("*/")):
     evals = read_csv(out_dir / "eval.csv") if (out_dir / "eval.csv").exists() else []
     finished = bool(evals) and int(evals[-1]["iter"]) == config["max_iters"]
     # wall-clock and throughput over the whole run (train.py sums them over crash + resume).
-    # MFU uses C_tok from CLAUDE.md "Compute accounting" and the run's GPU peak (train.py writes it to
+    # MFU uses C_tok = 6 P_ne + 6 d V + 6 L T d and the run's GPU peak (train.py writes it to
     # config.json; runs from before that were all on A100-40s)
     timing = {}
     peak = config.get("gpu_peak_flops", A100_PEAK)
@@ -112,7 +112,7 @@ for run in runs:
 
 best_rows, md = [], ["# Tuned learning rates", "",
                      "Written by `analysis/collect_results.py` from the tuning runs (10% of each shape's tokens).",
-                     "Optimum = lowest val loss after the last step (CLAUDE.md \"Tuning protocol\").", ""]
+                     "Optimum = lowest val loss after the last step.", ""]
 best_lr = {}
 for (param, shape), group in sorted(groups.items(), key=lambda kv: (kv[0][0], -int(kv[0][1].split("x")[1]))):
     group.sort(key=lambda r: r["lr"])
@@ -144,14 +144,14 @@ for (param, shape), group in sorted(groups.items(), key=lambda kv: (kv[0][0], -i
 # CompleteP transfer check: optimum of every other shape within one grid step (x2) of the reference shape
 if ("completep", REFERENCE_SHAPE) in best_lr:
     md += ["## CompleteP transfer check", "",
-           f"Optimum of each shape vs {REFERENCE_SHAPE} (more than one grid step = flag, CLAUDE.md \"Sweeps\").", ""]
+           f"Optimum of each shape vs {REFERENCE_SHAPE} (more than one grid step = flag).", ""]
     ref = best_lr[("completep", REFERENCE_SHAPE)]
     for shape in sorted({s for p, s in best_lr if p == "completep"} - {REFERENCE_SHAPE}, key=lambda s: -int(s.split("x")[1])):
         steps = math.log2(best_lr[("completep", shape)] / ref)
         md.append(f"- {shape}: {round(steps, 1):+g} grid steps " + ("⚠ **FLAG: transfer failed or implementation bug**" if abs(steps) > 1.01 else "(ok)"))
     md.append("")
 
-# conditions of each final run (CLAUDE.md "Conditions"), from its LR rather than its name, because one
+# conditions of each final run, from its LR rather than its name, because one
 # run can serve two conditions (sp-512x16 is (a) and (b); completep-<shape> is also (d) when that shape's
 # tuned LR is the 512x16 one): transferred LR = (a) / (c), the shape's own tuned LR = (b) / (d)
 for run in runs:

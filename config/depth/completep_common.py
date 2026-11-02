@@ -1,5 +1,5 @@
 # CompleteP (alpha = 1) settings, execed by every config in config/depth/completep/ after common.py.
-# Multipliers are relative to CompleteP's base shape N_base = 256, L_base = 2 (CLAUDE.md, CompleteP Table 1),
+# Multipliers are relative to CompleteP's base shape N_base = 256, L_base = 2 (CompleteP Table 1),
 # and --learning_rate is eta_base, the LR of that base shape.
 mup_enabled = True  # width (muP): hidden init variance and hidden LR / m_N, logits / m_N, attention 1/d_head
 mup_width_multiplier = n_embd / 256  # m_N

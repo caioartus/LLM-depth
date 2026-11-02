@@ -1,5 +1,5 @@
 #!/bin/bash
-# Submit the extra runs added after the final runs (CLAUDE.md "Extra runs"), on the same 96GB H100s.
+# Submit the extra runs added after the final runs, on the same 96GB H100s.
 # None of them is a condition: analysis/collect_results.py gives them their own kinds from the name
 # prefix, so they never enter conditions (a)-(d) in runs.csv or results.ipynb.
 #   check-sp-256x64-lr2.4e-3   post-hoc LR check: SP 256x64 at full length one grid step above its best

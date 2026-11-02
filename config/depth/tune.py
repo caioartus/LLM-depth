@@ -1,4 +1,4 @@
-# Turns a full run into a tuning run (CLAUDE.md "Tuning protocol"): tune_fraction of the shape's
+# Turns a full run into a tuning run: tune_fraction of the shape's
 # tokens with the schedule compressed to that length (still 10% warmup, cosine to 0), same batch.
 # Pass it after the shape config:
 #   python train.py config/depth/sp/512x16.py config/depth/tune.py --learning_rate=6e-4

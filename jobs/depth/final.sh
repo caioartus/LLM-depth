@@ -1,5 +1,5 @@
 #!/bin/bash
-# Submit the final runs of the depth/width study (CLAUDE.md "Final runs"), each at the full
+# Submit the final runs of the depth/width study, each at the full
 # compute budget. The learning rates come from results/best_lr.csv, written by
 # analysis/collect_results.py from the tuning runs. The script refuses to submit if a needed
 # LR is missing or its optimum is on the edge of the grid (edge rule not done yet).

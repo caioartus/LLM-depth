@@ -1,5 +1,5 @@
 #!/bin/bash
-# Coordinate check of the parameterization (CLAUDE.md "Before sweeps"), one GPU job.
+# Coordinate check of the parameterization, one GPU job.
 # 10-step runs of SP and CompleteP, 3 seeds each, over
 #   depth L = 2, 4, 8, 16, 32, 64 at width 256    (checks the depth scaling)
 #   width d = 256, 512, 1024 at depth 2           (checks the width scaling)

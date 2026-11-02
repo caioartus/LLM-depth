@@ -609,7 +609,7 @@ class GPT(nn.Module):
         cfg = self.config
         L, T = cfg.n_layer, cfg.block_size
         ### Begin depth-study code ###
-        # C_tok from CLAUDE.md "Compute accounting": 6 P_ne + 6 d V + 6 L T d, with P_ne = 12 d^2 L and the
+        # C_tok = 6 P_ne + 6 d V + 6 L T d, with P_ne = 12 d^2 L and the
         # attention term halved because attention is causal. was: 6 N + 12 L H Q T (all params, full attention)
         d, V = cfg.n_embd, cfg.vocab_size
         flops_per_token = 6 * 12 * d**2 * L + 6 * d * V + 6 * L * T * d

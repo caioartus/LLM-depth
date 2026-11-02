@@ -1,4 +1,4 @@
-# Coordinate check settings (CLAUDE.md "Before sweeps"), execed by config/depth/{sp,completep}/coord_check.py.
+# Coordinate check settings, execed by config/depth/{sp,completep}/coord_check.py.
 # 10 training steps that record the mean |output| of the token embedding, every attention and MLP
 # branch, the last block and lm_head at every step. Under a correct CompleteP these stay roughly
 # the same as depth (and width) grow; under SP they drift. Run by jobs/depth/coord_check.sbatch.
