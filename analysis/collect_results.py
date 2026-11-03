@@ -15,9 +15,9 @@ It writes
     results/best_lr.md          the same as a readable table, with every LR tried, the edge-rule flags and the transfer check
 
 Run kinds come from the names the scripts in jobs/depth/ give: tune-... (LR sweeps), check-... (post-hoc
-full-length LR checks) and seed<n>-... (extra seeds of a final run), both from jobs/depth/extra.sh,
-smoke-... (skipped), others are final runs. Only final runs get a condition, so checks and extra seeds
-never enter conditions (a)-(d).
+full-length LR checks), seed<n>-... (extra seeds of a final run) and warmup-... (tuning runs with a longer
+warmup), all three from jobs/depth/extra.sh, smoke-... (skipped), others are final runs. Only final runs get
+a condition, and only tune runs enter best_lr, so the extra runs never enter conditions (a)-(d).
 """
 
 import csv
@@ -51,6 +51,8 @@ def run_kind(name):
         return "check"
     if name.startswith("seed"):
         return "seed"
+    if name.startswith("warmup-"):
+        return "warmup"
     return "final"
 
 

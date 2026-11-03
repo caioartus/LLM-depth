@@ -7,6 +7,11 @@
 #   seed1-sp-512x16, seed2-..  seeds 1 and 2 of sp-512x16 and completep-512x16 (seed 0), same LR:
 #   seed1-completep-512x16, .. the run-to-run noise. The seed only changes the init (the data order
 #                              and the eval windows are fixed)
+#   warmup-sp-256x64-lr6e-4,   warmup check (added 2026-11-03): the SP 256x64 tuning runs (10% of the tokens,
+#   ..-lr1.2e-3, ..-lr2.4e-3   557 steps) again with warmup over 50% of the run instead of 10% (56 steps),
+#                              everything else identical, on the A100-40s of the original sweep. Tests whether
+#                              the short warmup is why the 10% sweep picked a too-low LR: if 1.2e-3 or 2.4e-3
+#                              now beats 6e-4, it is; if 6e-4 still wins, it is not. Reported either way
 #
 # Usage (from the repo root):
 #   DRY_RUN=1 jobs/depth/extra.sh    # print the commands and each run's state, submit nothing
@@ -44,6 +49,16 @@ submit check-sp-256x64-lr2.4e-3 config/depth/sp/256x64.py --learning_rate=2.4e-3
 for SEED in 1 2; do
     submit "seed$SEED-sp-512x16" config/depth/sp/512x16.py --learning_rate="$SP_LR" --seed="$SEED"
     submit "seed$SEED-completep-512x16" config/depth/completep/512x16.py --learning_rate="$COMPLETEP_LR" --seed="$SEED"
+done
+
+# warmup check: half of the original tuning runs' length (read from one of them), same GPU type as that sweep
+TUNE_ITERS=$(sed -n 's/.*"max_iters": \([0-9]*\).*/\1/p' results/runs/tune-sp-256x64-lr6e-4/config.json)
+[[ -n "$TUNE_ITERS" ]] || { echo "could not read max_iters of tune-sp-256x64-lr6e-4" >&2; exit 1; }
+WARMUP=$((TUNE_ITERS / 2))
+echo "warmup check: $WARMUP warmup steps of $TUNE_ITERS"
+for LR in 6e-4 1.2e-3 2.4e-3; do
+    SBATCH_GRES=gpu:a100-40:1 SBATCH_TIMELIMIT=02:00:00 submit "warmup-sp-256x64-lr$LR" config/depth/sp/256x64.py \
+        config/depth/tune.py --learning_rate="$LR" --warmup_iters="$WARMUP"
 done
 
 if [[ ${#FAILED[@]} -gt 0 ]]; then
