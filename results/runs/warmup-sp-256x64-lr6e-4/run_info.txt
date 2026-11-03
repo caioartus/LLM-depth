@@ -1,0 +1,4 @@
+=== attempt: job 1065762, started Tue Nov  3 08:39:10 +08 2026
+name:    warmup-sp-256x64-lr6e-4
+commit:  787c672
+command: config/depth/sp/256x64.py config/depth/tune.py --learning_rate=6e-4 --warmup_iters=278
