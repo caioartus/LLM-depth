@@ -1,0 +1,107 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\citation{vaswani2017attention}
+\citation{kaplan2020scaling,hoffmann2022training}
+\citation{kaplan2020scaling}
+\citation{levine2020limits}
+\citation{mcleish2025gemstones_v1}
+\citation{mcleish2025gemstones}
+\citation{fahim2026depth}
+\citation{yang2021feature,yang2022tensor}
+\citation{yang2024depth}
+\citation{bordelon2024depthwise}
+\citation{dey2025completep}
+\citation{fahim2026depth}
+\citation{dey2025completep}
+\citation{kaplan2020scaling}
+\citation{mcleish2025gemstones_v1}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
+\citation{soboleva2023slimpajama}
+\citation{dey2025completep}
+\citation{dey2025completep}
+\citation{hoffmann2022training}
+\citation{kaplan2020scaling}
+\citation{kaplan2020scaling}
+\citation{hoffmann2022training}
+\citation{dey2025completep}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Methodology}{2}{section.2}\protected@file@percent }
+\newlabel{sec:method}{{2}{2}{Methodology}{section.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Model architecture and training}{2}{subsection.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Compute budget}{2}{subsection.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Tuning runs}{2}{subsection.2.3}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Optimal learning rate for each shape from the tuning runs (10\% of the tokens). The \ensuremath  {512{\times }16} row is the transferred learning rate.}}{3}{table.caption.2}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{tab:tuned_lr}{{1}{3}{Optimal learning rate for each shape from the tuning runs (10\% of the tokens). The \sh {512}{16} row is the transferred learning rate}{table.caption.2}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Learning rate sweeps of the tuning runs (10\% of each shape's tokens, compressed schedule). The y-axis is the validation loss at the end of the tuning run, and stars mark the optimum of each shape. Both x-axes are on a $\log _2$ scale.}}{3}{figure.caption.3}\protected@file@percent }
+\newlabel{fig:tuning}{{1}{3}{Learning rate sweeps of the tuning runs (10\% of each shape's tokens, compressed schedule). The y-axis is the validation loss at the end of the tuning run, and stars mark the optimum of each shape. Both x-axes are on a $\log _2$ scale}{figure.caption.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.4}Full runs and seed noise}{3}{subsection.2.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}Results}{3}{section.3}\protected@file@percent }
+\newlabel{sec:results}{{3}{3}{Results}{section.3}{}}
+\@writefile{toc}{\contentsline {paragraph}{At fixed compute, the best observed width-to-depth ratio is 32 to 64.}{3}{section*.6}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Final validation loss of every full run (seed 0). ``$=$'' means the tuned learning rate equals the transferred one, so both conditions share the run to its left. Learning rates are in Table~\ref {tab:tuned_lr}. One extra SP run at \ensuremath  {256{\times }64} with $\eta = 2.4\times 10^{-3}$ reaches 3.542.}}{3}{table.caption.5}\protected@file@percent }
+\newlabel{tab:final}{{2}{3}{Final validation loss of every full run (seed 0). ``$=$'' means the tuned learning rate equals the transferred one, so both conditions share the run to its left. Learning rates are in Table~\ref {tab:tuned_lr}. One extra SP run at \sh {256}{64} with $\eta = 2.4\times 10^{-3}$ reaches 3.542}{table.caption.5}{}}
+\@writefile{toc}{\contentsline {paragraph}{CompleteP is less sensitive to the transferred learning rate at the deepest shape, but not better in absolute terms.}{3}{section*.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Tuning on 10\% of the tokens with a compressed schedule picks a learning rate that is too small.}{3}{section*.8}\protected@file@percent }
+\citation{kaplan2020scaling}
+\citation{levine2020limits}
+\citation{mcleish2025gemstones}
+\citation{yang2021feature,yang2022tensor}
+\citation{dey2025completep}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces \textbf  {Left:} final validation loss for each shape at a fixed compute budget of $8.48\times 10^{17}$ FLOPs, ordered from deep and narrow to shallow and wide. SP is shown in blue and CompleteP in orange. Dashed lines use the learning rate tuned at \ensuremath  {512{\times }16} and transferred to all shapes; solid lines use a learning rate tuned per shape with short tuning runs (10\% of the tokens). Error bars show $\pm $ the pooled seed standard deviation (0.0076, from 3 seeds per parameterisation at \ensuremath  {512{\times }16}). \textbf  {Right:} SP at \ensuremath  {256{\times }64}, validation loss at three peak learning rates, relative to the loss at $6\times 10^{-4}$ (negative means better). Circles mark the best learning rate in each setting. Tuning runs with the default 10\% warmup prefer the lowest learning rate. Full-length runs prefer the highest, and so do tuning runs with a 50\% warmup.}}{4}{figure.caption.4}\protected@file@percent }
+\newlabel{fig:main}{{2}{4}{\textbf {Left:} final validation loss for each shape at a fixed compute budget of $8.48\times 10^{17}$ FLOPs, ordered from deep and narrow to shallow and wide. SP is shown in blue and CompleteP in orange. Dashed lines use the learning rate tuned at \sh {512}{16} and transferred to all shapes; solid lines use a learning rate tuned per shape with short tuning runs (10\% of the tokens). Error bars show $\pm $ the pooled seed standard deviation (0.0076, from 3 seeds per parameterisation at \sh {512}{16}). \textbf {Right:} SP at \sh {256}{64}, validation loss at three peak learning rates, relative to the loss at $6\times 10^{-4}$ (negative means better). Circles mark the best learning rate in each setting. Tuning runs with the default 10\% warmup prefer the lowest learning rate. Full-length runs prefer the highest, and so do tuning runs with a 50\% warmup}{figure.caption.4}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Discussion, limitations and future work}{4}{section.4}\protected@file@percent }
+\newlabel{sec:discussion}{{4}{4}{Discussion, limitations and future work}{section.4}{}}
+\@writefile{toc}{\contentsline {paragraph}{Relation to prior work.}{4}{section*.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Limitations.}{4}{section*.10}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Future work.}{4}{section*.11}\protected@file@percent }
+\citation{li2020budgeted}
+\citation{chen2022rex}
+\citation{shleifer2019using}
+\citation{bjorck2024scaling}
+\citation{wortsman2023smallscale}
+\citation{kalra2024warmup}
+\bibstyle{plainnat}
+\bibdata{references}
+\bibcite{bjorck2024scaling}{{1}{2025}{{Bjorck et~al.}}{{Bjorck, Benhaim, Chaudhary, Wei, and Song}}}
+\bibcite{bordelon2024depthwise}{{2}{2024}{{Bordelon et~al.}}{{Bordelon, Noci, Li, Hanin, and Pehlevan}}}
+\bibcite{chen2022rex}{{3}{2022}{{Chen et~al.}}{{Chen, Wolfe, and Kyrillidis}}}
+\bibcite{dey2025completep}{{4}{2025}{{Dey et~al.}}{{Dey, Zhang, Noci, Li, Bordelon, Bergsma, Pehlevan, Hanin, and Hestness}}}
+\bibcite{fahim2026depth}{{5}{2026}{{Fahim and Karim}}{{}}}
+\bibcite{hoffmann2022training}{{6}{2022}{{Hoffmann et~al.}}{{Hoffmann, Borgeaud, Mensch, Buchatskaya, Cai, Rutherford, de~Las~Casas, Hendricks, Welbl, Clark, Hennigan, Noland, Millican, van~den Driessche, Damoc, Guy, Osindero, Simonyan, Elsen, Rae, Vinyals, and Sifre}}}
+\bibcite{kalra2024warmup}{{7}{2024}{{Kalra and Barkeshli}}{{}}}
+\bibcite{kaplan2020scaling}{{8}{2020}{{Kaplan et~al.}}{{Kaplan, McCandlish, Henighan, Brown, Chess, Child, Gray, Radford, Wu, and Amodei}}}
+\bibcite{levine2020limits}{{9}{2020}{{Levine et~al.}}{{Levine, Wies, Sharir, Bata, and Shashua}}}
+\bibcite{li2020budgeted}{{10}{2020}{{Li et~al.}}{{Li, Yumer, and Ramanan}}}
+\@writefile{toc}{\contentsline {section}{\numberline {5}Conclusion}{5}{section.5}\protected@file@percent }
+\bibcite{mcleish2025gemstones}{{11}{2025{}}{{McLeish et~al.}}{{McLeish, Kirchenbauer, Miller, Singh, Bhatele, Goldblum, Panda, and Goldstein}}}
+\bibcite{mcleish2025gemstones_v1}{{12}{2025{}}{{McLeish et~al.}}{{McLeish, Kirchenbauer, Miller, Singh, Bhatele, Goldblum, Panda, and Goldstein}}}
+\bibcite{shleifer2019using}{{13}{2019}{{Shleifer and Prokop}}{{}}}
+\bibcite{soboleva2023slimpajama}{{14}{2023}{{Soboleva et~al.}}{{Soboleva, Al-Khateeb, Myers, Steeves, Hestness, and Dey}}}
+\bibcite{vaswani2017attention}{{15}{2017}{{Vaswani et~al.}}{{Vaswani, Shazeer, Parmar, Uszkoreit, Jones, Gomez, Kaiser, and Polosukhin}}}
+\bibcite{wortsman2023smallscale}{{16}{2024}{{Wortsman et~al.}}{{Wortsman, Liu, Xiao, Everett, Alemi, Adlam, Co-Reyes, Gur, Kumar, Novak, Pennington, Sohl-Dickstein, Xu, Lee, Gilmer, and Kornblith}}}
+\bibcite{yang2021feature}{{17}{2021}{{Yang and Hu}}{{}}}
+\bibcite{yang2022tensor}{{18}{2022}{{Yang et~al.}}{{Yang, Hu, Babuschkin, Sidor, Liu, Farhi, Ryder, Pachocki, Chen, and Gao}}}
+\bibcite{yang2024depth}{{19}{2024}{{Yang et~al.}}{{Yang, Yu, Zhu, and Hayou}}}
+\citation{kaplan2020scaling}
+\citation{hoffmann2022training}
+\citation{hoffmann2022training}
+\citation{kaplan2020scaling}
+\@writefile{toc}{\contentsline {section}{\numberline {A}Supplementary material}{7}{appendix.A}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {A.1}Derivation of the compute budget}{7}{subsection.A.1}\protected@file@percent }
+\newlabel{app:flops}{{A.1}{7}{Derivation of the compute budget}{subsection.A.1}{}}
+\@writefile{toc}{\contentsline {paragraph}{Non-embedding parameters ($6N$).}{7}{section*.13}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Backward pass (factor 3).}{7}{section*.14}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Attention ($6LTd$).}{7}{section*.15}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Unembedding ($6dV$).}{7}{section*.16}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Budget and token counts.}{7}{section*.17}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Per-token training FLOPs for each shape ($T = 2048$, $V = 50{,}304$), split into the three terms of $C_\text  {tok}$ with their share of the total, and the resulting number of training tokens at the fixed budget $C \approx 8.48 \times 10^{17}$ FLOPs.}}{7}{table.caption.18}\protected@file@percent }
+\newlabel{tab:flops}{{3}{7}{Per-token training FLOPs for each shape ($T = 2048$, $V = 50{,}304$), split into the three terms of $C_\text {tok}$ with their share of the total, and the resulting number of training tokens at the fixed budget $C \approx 8.48 \times 10^{17}$ FLOPs}{table.caption.18}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {A.2}Coordinate check for CompleteP}{8}{subsection.A.2}\protected@file@percent }
+\newlabel{app:coord}{{A.2}{8}{Coordinate check for CompleteP}{subsection.A.2}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Coordinate check against depth ($L = 2$ to $64$ at $d = 256$): mean $|\text  {output}|$ of each activation at each of 10 training steps (constant learning rate $2^{-8}$, micro-batch 8, mean over 3 seeds; log scale). Attention and MLP values are averaged over all blocks and measured before the residual multiplier. Because of pre-LayerNorm, each branch sees a normalised input, so the SP branch outputs stay roughly flat in depth. The SP residual stream after the last block (before the final LayerNorm) still grows with depth, by about $20\times $ from $L = 2$ to $L = 64$ at step 10, because it sums $L$ unscaled branch outputs. With CompleteP's $L^{-1}$ residual scaling it stays flat.}}{8}{figure.caption.19}\protected@file@percent }
+\newlabel{fig:coord_check_depth}{{3}{8}{Coordinate check against depth ($L = 2$ to $64$ at $d = 256$): mean $|\text {output}|$ of each activation at each of 10 training steps (constant learning rate $2^{-8}$, micro-batch 8, mean over 3 seeds; log scale). Attention and MLP values are averaged over all blocks and measured before the residual multiplier. Because of pre-LayerNorm, each branch sees a normalised input, so the SP branch outputs stay roughly flat in depth. The SP residual stream after the last block (before the final LayerNorm) still grows with depth, by about $20\times $ from $L = 2$ to $L = 64$ at step 10, because it sums $L$ unscaled branch outputs. With CompleteP's $L^{-1}$ residual scaling it stays flat}{figure.caption.19}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Coordinate check against width ($d = 256$ to $1024$ at $L = 2$), same setup as Figure~\ref {fig:coord_check_depth}. Under SP the attention branch, MLP branch and last-block residual stream grow with width at every step after the first, by roughly $7$ to $13\times $ over a $4\times $ increase in $d$ at step 10. SP uses the same learning rate for every width, so each update of a hidden matrix changes its output by an amount that grows with $d$. CompleteP scales the hidden-matrix learning rate by $m_d^{-1}$, and all its activations stay flat in width; the remaining variation is mostly in the first few steps. The token embedding is nearly flat in both parameterisations. The SP logits vary irregularly with width rather than growing steadily.}}{8}{figure.caption.20}\protected@file@percent }
+\newlabel{fig:coord_check_width}{{4}{8}{Coordinate check against width ($d = 256$ to $1024$ at $L = 2$), same setup as Figure~\ref {fig:coord_check_depth}. Under SP the attention branch, MLP branch and last-block residual stream grow with width at every step after the first, by roughly $7$ to $13\times $ over a $4\times $ increase in $d$ at step 10. SP uses the same learning rate for every width, so each update of a hidden matrix changes its output by an amount that grows with $d$. CompleteP scales the hidden-matrix learning rate by $m_d^{-1}$, and all its activations stay flat in width; the remaining variation is mostly in the first few steps. The token embedding is nearly flat in both parameterisations. The SP logits vary irregularly with width rather than growing steadily}{figure.caption.20}{}}
+\gdef \@abspage@last{8}

@@ -123,6 +123,11 @@ Warmup check (added 2026-11-03, pre-declared, the last new runs; `warmup-sp-256x
 - Pre-declared reading: 1.2e-3 or 2.4e-3 beats 6e-4 → the short warmup explains the bias; 6e-4 still best → it does not, and the bias is reported as unexplained. Reported either way; nothing else is run after it. Compared against the original 10%-warmup tuning runs (6.060, 6.188, 6.256).
 - Result (2026-11-03, `analysis/analyse_warmup.ipynb`): 50% warmup gives 5.888 / 5.714 / 5.600 at 6e-4 / 1.2e-3 / 2.4e-3, so the ranking flips to the full-length one (2.4e-3 < 1.2e-3 < 6e-4); configs differ only in `warmup_iters`. By the pre-declared rule the short warmup explains the bias at SP 256x64. The longer warmup lowered the tuning loss at every LR (by 0.17 / 0.47 / 0.66). Gap sizes are not reproduced (2.4e-3 vs 1.2e-3: −0.114 here, −0.050 at full length). Caveats: one shape, one seed, same peak and mean LR but a different schedule shape (so "the compressed early schedule", not "warmup steps"), 2.4e-3 unbracketed.
 
+Full-length LR sweep at 256x64 (added 2026-11-13 on the submission day, reversing the 2026-11-02 decision not to chase the bracket; `jobs/depth/lr_sweep_256x64.sh`, H100, 3 h limit). Included in the report only if finished before submission, otherwise listed as future work:
+- Round 1: `check-sp-256x64-lr4.8e-3`, `check-completep-256x64-lr0.00390625` (2^-8), `check-completep-256x64-lr0.015625` (2^-6). Round 2 only if an edge LR wins: one more x2 step beyond that edge (`lr_sweep_256x64.sh PARAM LR`).
+- Question: at the deepest shape, which parameterisation reaches the lower loss with a bracketed full-length LR (currently CompleteP 3.518 vs SP 3.542, borderline)? It does not give a clean depth penalty: the 512x16 LRs come from the same biased 10% tuning.
+- Pre-declared reading: compare the best bracketed loss of each parameterisation, against a single-run difference SE of ~0.011. SP lower by > 0.022 = SP wins (report: CompleteP's advantage at depth is LR robustness, not best loss). CompleteP lower by > 0.022 = CompleteP wins at the deepest shape. Otherwise a tie. If a bracket is still open, report that parameterisation's best loss as an upper bound. Reported either way.
+
 Optional if time remains:
 - Seeds 1–2 for 384×28 (all conditions)
 - CompleteP 512×4 diagnostic sweep (out of scope for now, 5 short runs of a 12.6M model, not a study shape, tuned with 512×16's token count): 512×16 → 512×4 changes only depth, 512×4 → 1024×4 only width. If the optimum shifts at 512×4, the 1024×4 drift is a shallow-depth (finite-$L$) effect; if not, it comes from width or the tied embedding.
@@ -205,6 +210,7 @@ Code changes for the study are marked `### Begin depth-study code ###` (train.py
 6. Added 2026-10-27, after (a)–(c) finals had run: `jobs/depth/tune.sh completep` (submits only the 10 missing 384x28 / 640x10 runs); collect; then `jobs/depth/final.sh` again, which skips every finished final run and submits only the (d) runs. Check with `DRY_RUN=1` first.
 7. Added 2026-11-02: `DRY_RUN=1 jobs/depth/extra.sh`, then `jobs/depth/extra.sh` (5 runs); collect and commit.
 8. Added 2026-11-03: the same two commands again; they skip the 5 finished runs and submit only the 3 `warmup-` runs (A100-40, 2 h limit). Collect and commit.
+9. Added 2026-11-13: `DRY_RUN=1 jobs/depth/lr_sweep_256x64.sh`, then `jobs/depth/lr_sweep_256x64.sh` (3 runs, H100, 3 h limit); collect and commit. Round 2 if needed: `jobs/depth/lr_sweep_256x64.sh sp|completep LR`.
 
 ## Status (as of 2026-10-26)
 - Everything above was tested locally on CPU with fake data in a scratch copy: logs, exact step count, bit-identical resume, collect, final.sh, plot, the train.sbatch resume guard (with stub uv and nvidia-smi). Nothing has been run on the cluster yet. Not committed.

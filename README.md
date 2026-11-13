@@ -1,374 +1,126 @@
-# Don't be lazy: CompleteP enables compute-efficient deep transformers
-This branch contains a minimal implementation of CompleteP introduced in [Don't be lazy: CompleteP enables compute-efficient deep transformers](https://arxiv.org/abs/2505.01618).
+# LLM depth: width vs depth at fixed compute, under SP and CompleteP
 
-### Implementation
-To make everything easily searchable, each of the critical changes to implement Table 1 from the paper are marked with
-```
-### Begin CompleteP code ###
-<code for CompleteP change>
-### End CompleteP code ###
-```
+We train five GPT-2-style shapes with about 50M non-embedding parameters each (256×64, 384×28, 512×16, 640×10, 1024×4) at the same compute budget (≈ 8.48e17 FLOPs). Each shape is trained under four conditions:
 
-![parameterization_summary](assets/parameterization_summary.png)
+| | LR transferred from 512×16 | LR tuned per shape |
+|---|---|---|
+| **SP** | (a) | (b) |
+| **CompleteP** | (c) | (d) |
 
-First code block
-```
-### Begin CompleteP code ###
-x = x + self.residual_scaling * self.attn(self.ln_1(x))
-x = x + self.residual_scaling * self.mlp(self.ln_2(x))
-### End CompleteP code ###
-```
+The write-up is in [report/main.tex](report/main.tex).
 
-Second code block
-```
-### Begin CompleteP code ###
-# January 19 2025: Fixed bug found by (https://www.arxiv.org/abs/2512.22382) where we didn't implement separate adam_eps scaling for hidden and "emb. & unemb." layers based on Equation 40 in our paper.
-emb_unemb_adam_eps = adam_eps * (1 / self.config.mup_width_multiplier)
-hidden_adam_eps = adam_eps * (1 / self.config.mup_width_multiplier) * (self.config.depth_multiplier ** (-1 * self.config.depth_alpha_exp))
-optim_groups = [
-    {
-        'params': emb_params,
-        'weight_decay': weight_decay,
-        'lr_scale': 1.0,
-        'eps': emb_unemb_adam_eps,
-    },
-    {
-        'params': hidden_ln_params,
-        'weight_decay': 0.0,
-        'lr_scale': depth_lr_scaling,
-        'eps': hidden_adam_eps,
-    },
-    {
-        'params': hidden_weight_params,
-        'weight_decay': weight_decay / width_lr_scaling,
-        'lr_scale': width_lr_scaling * depth_lr_scaling,
-        'eps': hidden_adam_eps,
-    },
-    {
-        'params': hidden_bias_params,
-        'weight_decay': 0.0,
-        'lr_scale': depth_lr_scaling,
-        'eps': hidden_adam_eps,
-    },
-    {
-        'params': final_ln_params,
-        'weight_decay': 0.0,
-        'lr_scale': 1.0,
-        'eps': emb_unemb_adam_eps,
-    },
-]
-### End CompleteP code ###
-```
+## Where this code comes from
 
-### Experiment reproduction
-The `completep_examples`` folder contains code to reproduce the relative distance from linearization (Figure 6 from the paper)
+The training code is a fork of [EleutherAI/nanoGPT-mup](https://github.com/EleutherAI/nanoGPT-mup) (branch `completep`), the reference implementation of CompleteP. nanoGPT-mup is itself a fork of [karpathy/nanoGPT](https://github.com/karpathy/nanoGPT). The last upstream commit is `88458c3`, and every commit after it is ours: `git diff 88458c3 HEAD` shows everything we changed.
 
-![linearization_distance](assets/linearization_distance.png)
-
-and the depth coordinate check (Figure 7 from the paper).
-
-![depth_coord_check](assets/depth_coord_check.png)
-
-### Citation
-If you would like to cite [Don't be lazy: CompleteP enables compute-efficient deep transformers](https://arxiv.org/abs/2505.01618), please use:
-```
-@misc{dey2025dontlazycompletepenables,
-      title={Don't be lazy: CompleteP enables compute-efficient deep transformers}, 
-      author={Nolan Dey and Bin Claire Zhang and Lorenzo Noci and Mufan Li and Blake Bordelon and Shane Bergsma and Cengiz Pehlevan and Boris Hanin and Joel Hestness},
-      year={2025},
-      eprint={2505.01618},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG},
-      url={https://arxiv.org/abs/2505.01618}, 
-}
-```
-
-# nanoGPT-mup
-
-This repository is a fork of [nanoGPT](https://github.com/karpathy/nanoGPT) that provides a minimal implementation of the [maximal update parameterization](https://arxiv.org/abs/2203.03466) ([muP](https://github.com/microsoft/mup)).
-
-Branches
-- The [master branch](https://github.com/EleutherAI/nanoGPT-mup) acts as supplementary material for ["The Practitioner’s Guide to the Maximal Update Parameterization"](https://www.cerebras.ai/blog/the-practitioners-guide-to-the-maximal-update-parameterization).
-- The [supar branch](https://github.com/EleutherAI/nanoGPT-mup/tree/supar) contains a minimal implementation of sparse maximal update parameterization (SuPar) introduced in [Sparse maximal update parameterization: A holistic approach to sparse training dynamics](https://arxiv.org/abs/2405.15743).
-
-The [mup_examples](https://github.com/EleutherAI/nanoGPT-mup/tree/master/mup_examples) folder contains scripts to reproduce the plots in ["The Practitioner’s Guide to the Maximal Update Parameterization"](https://www.cerebras.ai/blog/the-practitioners-guide-to-the-maximal-update-parameterization) (see [mup_examples/README.md](https://github.com/EleutherAI/nanoGPT-mup/blob/master/mup_examples/README.md) for instructions to reproduce). 
-
-Each of the critical muP changes are marked with
-```
-### Begin muP code ###
-<code for mup change>
-### End muP code ###
-```
-to make everything easily searchable.
-
-| Parameterization | SP | **μP** | Code |
-|------------------|----|----|----|
-| Embedding Init. Var. | $σ_{base}^2$ | $σ_{base}^2$ |    |
-| Embedding LR | $η_{base}$ | $η_{base}$ |    |
-| Embedding Fwd. | $x W_{\text{emb}}$ | $\mathbf{α_{input}} · x W_{\text{emb}}$ |  [Code](https://github.com/EleutherAI/nanoGPT-mup/blob/bcadbc3c7a44138525eca8a799764afba7dca2b3/model.py#L208)  |
-| Hidden Init. Var. | $σ_{base}^2$ | $σ_{base}^2 / \mathbf{m_d}$ |  [Code](https://github.com/EleutherAI/nanoGPT-mup/blob/bcadbc3c7a44138525eca8a799764afba7dca2b3/model.py#L163-L169)  |
-| Hidden LR (Adam) | $η_{base}$ | $η_{base} / \mathbf{m_d}$ |  [Code](https://github.com/EleutherAI/nanoGPT-mup/blob/bcadbc3c7a44138525eca8a799764afba7dca2b3/model.py#L306-L329)  |
-| Output Logit Fwd. | $x W_{\text{emb}}^\top$ | $\mathbf{α_{output}} · x W_{\text{emb}}^\top / \mathbf{m_d}$ |  [Code](https://github.com/EleutherAI/nanoGPT-mup/blob/bcadbc3c7a44138525eca8a799764afba7dca2b3/model.py#L219)  |
-| Attention logits | $Q^\top K / \sqrt{d_{\text{head}}}$ | $Q^\top K / \mathbf{d_{\text{head}}}$ |  [Code](https://github.com/EleutherAI/nanoGPT-mup/blob/bcadbc3c7a44138525eca8a799764afba7dca2b3/model.py#L65)  |
-
-
-## Implementation Validation
-
-### Coordinate Checks
-
-Standard Parameterization:
-
-<img src="assets/coord_check_sp.png" alt="SP">
-
-muTransfer:
-
-<img src="assets/coord_check_mup.png" alt="muP">
-
-
-### Learning Rate muTransfer
-
-**Tiny Shakespeare**    |    **OpenWebText**
-:-------------------------:|:-------------------------:
-<img src="assets/mutransfer_lr_shakespeare_char.png" alt="mup-shakespeare">     |  <img src="assets/mutransfer_lr_owt.png" alt="mup-owt"> 
-
-
-## Citation
-
-If ["The Practitioner’s Guide to the Maximal Update Parameterization"](https://www.cerebras.ai/blog/the-practitioners-guide-to-the-maximal-update-parameterization) or this repository was useful to you, please cite:
-```
-@misc{cerebras2024mupguide,
-author = {Dey, Nolan and Anthony, Quentin and Hestness, Joel},
-title = {{The practitioner’s guide to the maximal update parameterization}},
-month = September,
-year = 2024,
-howpublished = {\url{https://www.cerebras.ai/blog/the-practitioners-guide-to-the-maximal-update-parameterization}},
-url = \url{https://www.cerebras.ai/blog/the-practitioners-guide-to-the-maximal-update-parameterization},
-}
-```
-
-# nanoGPT (Original README)
-
-![nanoGPT](assets/nanogpt.jpg)
-
-The simplest, fastest repository for training/finetuning medium-sized GPTs. It is a rewrite of [minGPT](https://github.com/karpathy/minGPT) that prioritizes teeth over education. Still under active development, but currently the file `train.py` reproduces GPT-2 (124M) on OpenWebText, running on a single 8XA100 40GB node in about 4 days of training. The code itself is plain and readable: `train.py` is a ~300-line boilerplate training loop and `model.py` a ~300-line GPT model definition, which can optionally load the GPT-2 weights from OpenAI. That's it.
-
-![repro124m](assets/gpt2_124M_loss.png)
-
-Because the code is so simple, it is very easy to hack to your needs, train new models from scratch, or finetune pretrained checkpoints (e.g. biggest one currently available as a starting point would be the GPT-2 1.3B model from OpenAI).
-
-## install
+## Folder layout
 
 ```
-pip install torch numpy transformers datasets tiktoken wandb tqdm
+README.md            this file
+report/              the report (LaTeX)                                    [ours]
+code/                all code, configs and results
+├── model.py         GPT model with muP / CompleteP                        [upstream, modified]
+├── train.py         training loop                                         [upstream, modified]
+├── configurator.py, csv_logging.py, bench.py, sample.py                   [upstream]
+├── scaling_laws.ipynb, transformer_sizing.ipynb                           [upstream]
+├── mup_examples/, completep_examples/, assets/                            [upstream] their coord checks and LR-transfer demos
+├── README.md, LICENSE                                                     [upstream]
+├── config/
+│   ├── depth/       every config of this study (shapes, SP/CompleteP, tuning, coord check)   [ours]
+│   ├── cluster_test.py                                                    [ours] quick cluster sanity run
+│   └── the rest     (train_gpt2.py, eval_gpt2*.py, *shakespeare*.py)      [upstream]
+├── data/
+│   ├── slimpajama/prepare.py                                              [ours]
+│   └── openwebtext/prepare.py                                             [upstream, modified] not used for the results
+├── jobs/            SLURM scripts: data prep, training, resume-on-crash   [ours]
+│   └── depth/       one script per experiment (tune, final, extra, coord check)
+├── analysis/        collect_results.py, plot_coord_check.py, notebooks    [ours]
+├── results/         logs of every run (CSV/JSON), tuned LRs, plots        [ours]
+├── readings/        PDFs of the main papers                               [ours]
+└── pyproject.toml, uv.lock, .python-version                               [ours]
 ```
 
-Dependencies:
+**Our changes to upstream files:**
+- `model.py`:
+  - RoPE in place of learned position embeddings (blocks marked `### Begin RoPE code ###`)
+  - FLOP count and MFU using our $C_\text{tok}$, measured against each GPU's own peak (blocks marked `### Begin depth-study code ###`)
+- `train.py`: sequential (no-repeat) data reading, the same validation windows for every eval, a final eval at the last step, CSV logging with timing and MFU, per-layer gradient and Adam-update diagnostics (`diag.csv`), crash-safe checkpoints. All changes are inside `### Begin depth-study code ###` blocks.
+- `data/openwebtext/prepare.py`: added a `--num_docs` option for taking a subset.
 
-- [pytorch](https://pytorch.org) <3
-- [numpy](https://numpy.org/install/) <3
--  `transformers` for huggingface transformers <3 (to load GPT-2 checkpoints)
--  `datasets` for huggingface datasets <3 (if you want to download + preprocess OpenWebText)
--  `tiktoken` for OpenAI's fast BPE code <3
--  `wandb` for optional logging <3
--  `tqdm` for progress bars <3
+We removed upstream's `data/shakespeare*`. Everything else listed as upstream is unchanged.
 
-## quick start
+## Reproducing the results
 
-If you are not a deep learning professional and you just want to feel the magic and get your feet wet, the fastest way to get started is to train a character-level GPT on the works of Shakespeare. First, we download it as a single (1MB) file and turn it from raw text into one large stream of integers:
+You can skip any step: every run's logs are already in `code/results/`, so the notebooks and the report work without a GPU.
 
-```sh
-python data/shakespeare_char/prepare.py
+**Requirements:**
+- A SLURM cluster. The scripts use partition `gpu-long` and GPU names `a100-40` / `h100-96`, which are specific to our cluster; change them in `jobs/*.sbatch` and `jobs/depth/final.sh`.
+- [uv](https://docs.astral.sh/uv/) with Python 3.14.
+
+Run every command from `code/`.
+
+```bash
+cd code
+uv sync --frozen                 # install the exact package versions from uv.lock
+mkdir -p logs
 ```
 
-This creates a `train.bin` and `val.bin` in that data directory. Now it is time to train your GPT. The size of it very much depends on the computational resources of your system:
-
-**I have a GPU**. Great, we can quickly train a baby GPT with the settings provided in the [config/train_shakespeare_char.py](config/train_shakespeare_char.py) config file:
-
-```sh
-python train.py config/train_shakespeare_char.py
+**1. Data:** about 2.2B tokens from SlimPajama-6B, a ~1% sample of SlimPajama-627B. This writes a ~4.4 GB `data/slimpajama/train.bin` plus the Hugging Face cache (set `HF_HOME` to move the cache).
+```bash
+sbatch jobs/prepare_data.sh slimpajama --num_docs 2000000
 ```
 
-If you peek inside it, you'll see that we're training a GPT with a context size of up to 256 characters, 384 feature channels, and it is a 6-layer Transformer with 6 heads in each layer. On one A100 GPU this training run takes about 3 minutes and the best validation loss is 1.4697. Based on the configuration, the model checkpoints are being written into the `--out_dir` directory `out-shakespeare-char`. So once the training finishes we can sample from the best model by pointing the sampling script at this directory:
-
-```sh
-python sample.py --out_dir=out-shakespeare-char
+**2. (Optional) Smoke test:** two 60-step runs, to check memory and resume.
+```bash
+jobs/depth/smoke_test.sh
 ```
 
-This generates a few samples, for example:
-
-```
-ANGELO:
-And cowards it be strawn to my bed,
-And thrust the gates of my threats,
-Because he that ale away, and hang'd
-An one with him.
-
-DUKE VINCENTIO:
-I thank your eyes against it.
-
-DUKE VINCENTIO:
-Then will answer him to save the malm:
-And what have you tyrannous shall do this?
-
-DUKE VINCENTIO:
-If you have done evils of all disposition
-To end his power, the day of thrust for a common men
-That I leave, to fight with over-liking
-Hasting in a roseman.
+**3. Coordinate check** (report appendix, figures `L_coord_check.png` and `width_coordinate_check.png`): one A100 job of 10-step runs, 3 seeds.
+```bash
+sbatch jobs/depth/coord_check.sbatch
+uv run --frozen python analysis/collect_results.py
+uv run --frozen python analysis/plot_coord_check.py     # -> results/coord_check/plots/{depth,width}.png
 ```
 
-lol  `¯\_(ツ)_/¯`. Not bad for a character-level model after 3 minutes of training on a GPU. Better results are quite likely obtainable by instead finetuning a pretrained GPT-2 model on this dataset (see finetuning section later).
+**4. LR tuning** (Table 2 and figure `tuning_transfer.png`): 5 shapes × 5 LRs per parameterisation, each on 10% of the shape's tokens, on A100-40GB.
+```bash
+jobs/depth/tune.sh sp
+jobs/depth/tune.sh completep
+uv run --frozen python analysis/collect_results.py      # picks the optimum per shape -> results/best_lr.csv
+```
+The figure is the "Final val loss vs LR" plot in `analysis/tuning.ipynb`.
 
-**I only have a macbook** (or other cheap computer). No worries, we can still train a GPT but we want to dial things down a notch. I recommend getting the bleeding edge PyTorch nightly ([select it here](https://pytorch.org/get-started/locally/) when installing) as it is currently quite likely to make your code more efficient. But even without it, a simple train run could look as follows:
-
-```sh
-python train.py config/train_shakespeare_char.py --device=cpu --compile=False --eval_iters=20 --log_interval=1 --block_size=64 --batch_size=12 --n_layer=4 --n_head=4 --n_embd=128 --max_iters=2000 --lr_decay_iters=2000 --dropout=0.0
+**5. Final runs** (main results, conditions (a)–(d)): full compute budget, on H100-96GB, 2–6 h each. The script reads its learning rates from `results/best_lr.csv`.
+```bash
+DRY_RUN=1 jobs/depth/final.sh    # optional: print what would be submitted
+jobs/depth/final.sh
+uv run --frozen python analysis/collect_results.py
 ```
 
-Here, since we are running on CPU instead of GPU we must set both `--device=cpu` and also turn off PyTorch 2.0 compile with `--compile=False`. Then when we evaluate we get a bit more noisy but faster estimate (`--eval_iters=20`, down from 200), our context size is only 64 characters instead of 256, and the batch size only 12 examples per iteration, not 64. We'll also use a much smaller Transformer (4 layers, 4 heads, 128 embedding size), and decrease the number of iterations to 2000 (and correspondingly usually decay the learning rate to around max_iters with `--lr_decay_iters`). Because our network is so small we also ease down on regularization (`--dropout=0.0`). This still runs in about ~3 minutes, but gets us a loss of only 1.88 and therefore also worse samples, but it's still good fun:
+**6. Extra runs:**
+- seeds 1–2 of both 512×16 runs, for noise estimates
+- SP 256×64 at LR 2.4e-3 at full length
+- the warmup check: SP 256×64 tuning runs with 50% warmup
 
-```sh
-python sample.py --out_dir=out-shakespeare-char --device=cpu
-```
-Generates samples like this:
-
-```
-GLEORKEN VINGHARD III:
-Whell's the couse, the came light gacks,
-And the for mought you in Aut fries the not high shee
-bot thou the sought bechive in that to doth groan you,
-No relving thee post mose the wear
+```bash
+jobs/depth/extra.sh
+uv run --frozen python analysis/collect_results.py
 ```
 
-Not bad for ~3 minutes on a CPU, for a hint of the right character gestalt. If you're willing to wait longer, feel free to tune the hyperparameters, increase the size of the network, the context length (`--block_size`), the length of training, etc.
+**7. Analysis notebooks.** These read only `results/`:
 
-Finally, on Apple Silicon Macbooks and with a recent PyTorch version make sure to add `--device=mps` (short for "Metal Performance Shaders"); PyTorch then uses the on-chip GPU that can *significantly* accelerate training (2-3X) and allow you to use larger networks. See [Issue 28](https://github.com/karpathy/nanoGPT/issues/28) for more.
+| Notebook | Produces |
+|---|---|
+| `analysis/results.ipynb` | final losses, gaps, seed noise, loss curves, throughput, diagnostics; writes `results/plots/main_figure.png` (report Figure 1) |
+| `analysis/tuning.ipynb` | LR sweeps, optima per shape (`tuning_transfer.png`) |
+| `analysis/analyse_warmup.ipynb` | the warmup check (10% vs 50% warmup) |
 
-## reproducing GPT-2
-
-A more serious deep learning professional may be more interested in reproducing GPT-2 results. So here we go - we first tokenize the dataset, in this case the [OpenWebText](https://openwebtext2.readthedocs.io/en/latest/), an open reproduction of OpenAI's (private) WebText:
-
-```sh
-python data/openwebtext/prepare.py
+**8. Report:** copy the figures into `report/figures/`, then build:
+```bash
+cd ../report && latexmk -pdf -outdir=build main.tex
 ```
 
-This downloads and tokenizes the [OpenWebText](https://huggingface.co/datasets/openwebtext) dataset. It will create a `train.bin` and `val.bin` which holds the GPT2 BPE token ids in one sequence, stored as raw uint16 bytes. Then we're ready to kick off training. To reproduce GPT-2 (124M) you'll want at least an 8X A100 40GB node and run:
-
-```sh
-torchrun --standalone --nproc_per_node=8 train.py config/train_gpt2.py
-```
-
-This will run for about 4 days using PyTorch Distributed Data Parallel (DDP) and go down to loss of ~2.85. Now, a GPT-2 model just evaluated on OWT gets a val loss of about 3.11, but if you finetune it it will come down to ~2.85 territory (due to an apparent domain gap), making the two models ~match.
-
-If you're in a cluster environment and you are blessed with multiple GPU nodes you can make GPU go brrrr e.g. across 2 nodes like:
-
-```sh
-# Run on the first (master) node with example IP 123.456.123.456:
-torchrun --nproc_per_node=8 --nnodes=2 --node_rank=0 --master_addr=123.456.123.456 --master_port=1234 train.py
-# Run on the worker node:
-torchrun --nproc_per_node=8 --nnodes=2 --node_rank=1 --master_addr=123.456.123.456 --master_port=1234 train.py
-```
-
-It is a good idea to benchmark your interconnect (e.g. iperf3). In particular, if you don't have Infiniband then also prepend `NCCL_IB_DISABLE=1` to the above launches. Your multinode training will work, but most likely _crawl_. By default checkpoints are periodically written to the `--out_dir`. We can sample from the model by simply `python sample.py`.
-
-Finally, to train on a single GPU simply run the `python train.py` script. Have a look at all of its args, the script tries to be very readable, hackable and transparent. You'll most likely want to tune a number of those variables depending on your needs.
-
-## baselines
-
-OpenAI GPT-2 checkpoints allow us to get some baselines in place for openwebtext. We can get the numbers as follows:
-
-```sh
-$ python train.py config/eval_gpt2.py
-$ python train.py config/eval_gpt2_medium.py
-$ python train.py config/eval_gpt2_large.py
-$ python train.py config/eval_gpt2_xl.py
-```
-
-and observe the following losses on train and val:
-
-| model | params | train loss | val loss |
-| ------| ------ | ---------- | -------- |
-| gpt2 | 124M         | 3.11  | 3.12     |
-| gpt2-medium | 350M  | 2.85  | 2.84     |
-| gpt2-large | 774M   | 2.66  | 2.67     |
-| gpt2-xl | 1558M     | 2.56  | 2.54     |
-
-However, we have to note that GPT-2 was trained on (closed, never released) WebText, while OpenWebText is just a best-effort open reproduction of this dataset. This means there is a dataset domain gap. Indeed, taking the GPT-2 (124M) checkpoint and finetuning on OWT directly for a while reaches loss down to ~2.85. This then becomes the more appropriate baseline w.r.t. reproduction.
-
-## finetuning
-
-Finetuning is no different than training, we just make sure to initialize from a pretrained model and train with a smaller learning rate. For an example of how to finetune a GPT on new text go to `data/shakespeare` and run `prepare.py` to download the tiny shakespeare dataset and render it into a `train.bin` and `val.bin`, using the OpenAI BPE tokenizer from GPT-2. Unlike OpenWebText this will run in seconds. Finetuning can take very little time, e.g. on a single GPU just a few minutes. Run an example finetuning like:
-
-```sh
-python train.py config/finetune_shakespeare.py
-```
-
-This will load the config parameter overrides in `config/finetune_shakespeare.py` (I didn't tune them much though). Basically, we initialize from a GPT2 checkpoint with `init_from` and train as normal, except shorter and with a small learning rate. If you're running out of memory try decreasing the model size (they are `{'gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl'}`) or possibly decreasing the `block_size` (context length). The best checkpoint (lowest validation loss) will be in the `out_dir` directory, e.g. in `out-shakespeare` by default, per the config file. You can then run the code in `sample.py --out_dir=out-shakespeare`:
-
-```
-THEODORE:
-Thou shalt sell me to the highest bidder: if I die,
-I sell thee to the first; if I go mad,
-I sell thee to the second; if I
-lie, I sell thee to the third; if I slay,
-I sell thee to the fourth: so buy or sell,
-I tell thee again, thou shalt not sell my
-possession.
-
-JULIET:
-And if thou steal, thou shalt not sell thyself.
-
-THEODORE:
-I do not steal; I sell the stolen goods.
-
-THEODORE:
-Thou know'st not what thou sell'st; thou, a woman,
-Thou art ever a victim, a thing of no worth:
-Thou hast no right, no right, but to be sold.
-```
-
-Whoa there, GPT, entering some dark place over there. I didn't really tune the hyperparameters in the config too much, feel free to try!
-
-## sampling / inference
-
-Use the script `sample.py` to sample either from pre-trained GPT-2 models released by OpenAI, or from a model you trained yourself. For example, here is a way to sample from the largest available `gpt2-xl` model:
-
-```sh
-python sample.py \
-    --init_from=gpt2-xl \
-    --start="What is the answer to life, the universe, and everything?" \
-    --num_samples=5 --max_new_tokens=100
-```
-
-If you'd like to sample from a model you trained, use the `--out_dir` to point the code appropriately. You can also prompt the model with some text from a file, e.g. ```python sample.py --start=FILE:prompt.txt```.
-
-## efficiency notes
-
-For simple model benchmarking and profiling, `bench.py` might be useful. It's identical to what happens in the meat of the training loop of `train.py`, but omits much of the other complexities.
-
-Note that the code by default uses [PyTorch 2.0](https://pytorch.org/get-started/pytorch-2.0/). At the time of writing (Dec 29, 2022) this makes `torch.compile()` available in the nightly release. The improvement from the one line of code is noticeable, e.g. cutting down iteration time from ~250ms / iter to 135ms / iter. Nice work PyTorch team!
-
-## todos
-
-- Investigate and add FSDP instead of DDP
-- Eval zero-shot perplexities on standard evals (e.g. LAMBADA? HELM? etc.)
-- Finetune the finetuning script, I think the hyperparams are not great
-- Schedule for linear batch size increase during training
-- Incorporate other embeddings (rotary, alibi)
-- Separate out the optim buffers from model params in checkpoints I think
-- Additional logging around network health (e.g. gradient clip events, magnitudes)
-- Few more investigations around better init etc.
-
-## troubleshooting
-
-Note that by default this repo uses PyTorch 2.0 (i.e. `torch.compile`). This is fairly new and experimental, and not yet available on all platforms (e.g. Windows). If you're running into related error messages try to disable this by adding `--compile=False` flag. This will slow down the code but at least it will run.
-
-For some context on this repository, GPT, and language modeling it might be helpful to watch my [Zero To Hero series](https://karpathy.ai/zero-to-hero.html). Specifically, the [GPT video](https://www.youtube.com/watch?v=kCc8FmEb1nY) is popular if you have some prior language modeling context.
-
-For more questions/discussions feel free to stop by **#nanoGPT** on Discord:
-
-[![](https://dcbadge.vercel.app/api/server/3zy8kqD9Cp?compact=true&style=flat)](https://discord.gg/3zy8kqD9Cp)
-
-## acknowledgements
-
-All nanoGPT experiments are powered by GPUs on [Lambda labs](https://lambdalabs.com), my favorite Cloud GPU provider. Thank you Lambda labs for sponsoring nanoGPT!
+**Notes:**
+- Re-running any `jobs/depth/*.sh` script only submits runs that are missing: finished runs are skipped and crashed runs resume from their checkpoint.
+- Runs write to `code/out/<name>/`, which is not in git because of the checkpoints. `collect_results.py` copies the small log files into `results/`.
+- The seed is 0 for every run except the extra seeds, and every run reads the same tokens in the same order.

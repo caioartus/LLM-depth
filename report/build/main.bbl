@@ -1,0 +1,170 @@
+\begin{thebibliography}{19}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Bjorck et~al.(2025)Bjorck, Benhaim, Chaudhary, Wei, and
+  Song]{bjorck2024scaling}
+Johan Bjorck, Alon Benhaim, Vishrav Chaudhary, Furu Wei, and Xia Song.
+\newblock Scaling optimal {LR} across token horizons.
+\newblock In \emph{International Conference on Learning Representations}, 2025.
+\newblock URL \url{https://arxiv.org/abs/2409.19913}.
+
+\bibitem[Bordelon et~al.(2024)Bordelon, Noci, Li, Hanin, and
+  Pehlevan]{bordelon2024depthwise}
+Blake Bordelon, Lorenzo Noci, Mufan~Bill Li, Boris Hanin, and Cengiz Pehlevan.
+\newblock Depthwise hyperparameter transfer in residual networks: Dynamics and
+  scaling limit.
+\newblock In \emph{International Conference on Learning Representations}, 2024.
+\newblock URL \url{https://arxiv.org/abs/2309.16620}.
+
+\bibitem[Chen et~al.(2022)Chen, Wolfe, and Kyrillidis]{chen2022rex}
+John Chen, Cameron Wolfe, and Anastasios Kyrillidis.
+\newblock Rex: Revisiting budgeted training with an improved schedule.
+\newblock In \emph{Proceedings of Machine Learning and Systems}, volume~4,
+  2022.
+\newblock URL \url{https://arxiv.org/abs/2107.04197}.
+
+\bibitem[Dey et~al.(2025)Dey, Zhang, Noci, Li, Bordelon, Bergsma, Pehlevan,
+  Hanin, and Hestness]{dey2025completep}
+Nolan Dey, Bin~Claire Zhang, Lorenzo Noci, Mufan Li, Blake Bordelon, Shane
+  Bergsma, Cengiz Pehlevan, Boris Hanin, and Joel Hestness.
+\newblock Don't be lazy: {CompleteP} enables compute-efficient deep
+  transformers.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~38, 2025.
+\newblock URL \url{https://arxiv.org/abs/2505.01618}.
+
+\bibitem[Fahim and Karim(2026)]{fahim2026depth}
+Md~Muhtasim~Munif Fahim and Md~Rezaul Karim.
+\newblock The depth delusion: Why transformers should be wider, not deeper.
+\newblock \emph{arXiv preprint arXiv:2601.20994}, 2026.
+\newblock URL \url{https://arxiv.org/abs/2601.20994}.
+
+\bibitem[Hoffmann et~al.(2022)Hoffmann, Borgeaud, Mensch, Buchatskaya, Cai,
+  Rutherford, de~Las~Casas, Hendricks, Welbl, Clark, Hennigan, Noland,
+  Millican, van~den Driessche, Damoc, Guy, Osindero, Simonyan, Elsen, Rae,
+  Vinyals, and Sifre]{hoffmann2022training}
+Jordan Hoffmann, Sebastian Borgeaud, Arthur Mensch, Elena Buchatskaya, Trevor
+  Cai, Eliza Rutherford, Diego de~Las~Casas, Lisa~Anne Hendricks, Johannes
+  Welbl, Aidan Clark, Tom Hennigan, Eric Noland, Katie Millican, George van~den
+  Driessche, Bogdan Damoc, Aurelia Guy, Simon Osindero, Karen Simonyan, Erich
+  Elsen, Jack~W. Rae, Oriol Vinyals, and Laurent Sifre.
+\newblock Training compute-optimal large language models.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~35, 2022.
+\newblock URL \url{https://arxiv.org/abs/2203.15556}.
+
+\bibitem[Kalra and Barkeshli(2024)]{kalra2024warmup}
+Dayal~Singh Kalra and Maissam Barkeshli.
+\newblock Why warmup the learning rate? underlying mechanisms and improvements.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~37, 2024.
+\newblock URL \url{https://arxiv.org/abs/2406.09405}.
+
+\bibitem[Kaplan et~al.(2020)Kaplan, McCandlish, Henighan, Brown, Chess, Child,
+  Gray, Radford, Wu, and Amodei]{kaplan2020scaling}
+Jared Kaplan, Sam McCandlish, Tom Henighan, Tom~B. Brown, Benjamin Chess, Rewon
+  Child, Scott Gray, Alec Radford, Jeffrey Wu, and Dario Amodei.
+\newblock Scaling laws for neural language models.
+\newblock \emph{arXiv preprint arXiv:2001.08361}, 2020.
+\newblock URL \url{https://arxiv.org/abs/2001.08361}.
+
+\bibitem[Levine et~al.(2020)Levine, Wies, Sharir, Bata, and
+  Shashua]{levine2020limits}
+Yoav Levine, Noam Wies, Or~Sharir, Hofit Bata, and Amnon Shashua.
+\newblock Limits to depth efficiencies of self-attention.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~33, 2020.
+\newblock URL \url{https://arxiv.org/abs/2006.12467}.
+
+\bibitem[Li et~al.(2020)Li, Yumer, and Ramanan]{li2020budgeted}
+Mengtian Li, Ersin Yumer, and Deva Ramanan.
+\newblock Budgeted training: Rethinking deep neural network training under
+  resource constraints.
+\newblock In \emph{International Conference on Learning Representations}, 2020.
+\newblock URL \url{https://arxiv.org/abs/1905.04753}.
+
+\bibitem[McLeish et~al.(2025{\natexlab{a}})McLeish, Kirchenbauer, Miller,
+  Singh, Bhatele, Goldblum, Panda, and Goldstein]{mcleish2025gemstones}
+Sean McLeish, John Kirchenbauer, David~Yu Miller, Siddharth Singh, Abhinav
+  Bhatele, Micah Goldblum, Ashwinee Panda, and Tom Goldstein.
+\newblock Gemstones: A model suite for multi-faceted scaling laws.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~38, 2025{\natexlab{a}}.
+\newblock URL \url{https://arxiv.org/abs/2502.06857}.
+
+\bibitem[McLeish et~al.(2025{\natexlab{b}})McLeish, Kirchenbauer, Miller,
+  Singh, Bhatele, Goldblum, Panda, and Goldstein]{mcleish2025gemstones_v1}
+Sean McLeish, John Kirchenbauer, David~Yu Miller, Siddharth Singh, Abhinav
+  Bhatele, Micah Goldblum, Ashwinee Panda, and Tom Goldstein.
+\newblock Gemstones: A model suite for multi-faceted scaling laws (version 1).
+\newblock arXiv preprint arXiv:2502.06857v1, February 2025{\natexlab{b}}.
+\newblock URL \url{https://arxiv.org/abs/2502.06857v1}.
+
+\bibitem[Shleifer and Prokop(2019)]{shleifer2019using}
+Sam Shleifer and Eric Prokop.
+\newblock Using small proxy datasets to accelerate hyperparameter search.
+\newblock \emph{arXiv preprint arXiv:1906.04887}, 2019.
+\newblock URL \url{https://arxiv.org/abs/1906.04887}.
+
+\bibitem[Soboleva et~al.(2023)Soboleva, Al-Khateeb, Myers, Steeves, Hestness,
+  and Dey]{soboleva2023slimpajama}
+Daria Soboleva, Faisal Al-Khateeb, Robert Myers, Jacob~R. Steeves, Joel
+  Hestness, and Nolan Dey.
+\newblock {SlimPajama: A 627B token cleaned and deduplicated version of
+  RedPajama}.
+\newblock \url{https://huggingface.co/datasets/cerebras/SlimPajama-627B}, June
+  2023.
+\newblock Cerebras Systems blog post.
+
+\bibitem[Vaswani et~al.(2017)Vaswani, Shazeer, Parmar, Uszkoreit, Jones, Gomez,
+  Kaiser, and Polosukhin]{vaswani2017attention}
+Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones,
+  Aidan~N. Gomez, {\L}ukasz Kaiser, and Illia Polosukhin.
+\newblock Attention is all you need.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~30, 2017.
+\newblock URL \url{https://arxiv.org/abs/1706.03762}.
+
+\bibitem[Wortsman et~al.(2024)Wortsman, Liu, Xiao, Everett, Alemi, Adlam,
+  Co-Reyes, Gur, Kumar, Novak, Pennington, Sohl-Dickstein, Xu, Lee, Gilmer, and
+  Kornblith]{wortsman2023smallscale}
+Mitchell Wortsman, Peter~J. Liu, Lechao Xiao, Katie Everett, Alex Alemi, Ben
+  Adlam, John~D. Co-Reyes, Izzeddin Gur, Abhishek Kumar, Roman Novak, Jeffrey
+  Pennington, Jascha Sohl-Dickstein, Kelvin Xu, Jaehoon Lee, Justin Gilmer, and
+  Simon Kornblith.
+\newblock Small-scale proxies for large-scale transformer training
+  instabilities.
+\newblock In \emph{International Conference on Learning Representations}, 2024.
+\newblock URL \url{https://arxiv.org/abs/2309.14322}.
+
+\bibitem[Yang and Hu(2021)]{yang2021feature}
+Greg Yang and Edward~J. Hu.
+\newblock Tensor programs {IV}: Feature learning in infinite-width neural
+  networks.
+\newblock In \emph{Proceedings of the 38th International Conference on Machine
+  Learning}, volume 139 of \emph{Proceedings of Machine Learning Research},
+  2021.
+\newblock URL \url{https://arxiv.org/abs/2011.14522}.
+
+\bibitem[Yang et~al.(2022)Yang, Hu, Babuschkin, Sidor, Liu, Farhi, Ryder,
+  Pachocki, Chen, and Gao]{yang2022tensor}
+Greg Yang, Edward~J. Hu, Igor Babuschkin, Szymon Sidor, Xiaodong Liu, David
+  Farhi, Nick Ryder, Jakub Pachocki, Weizhu Chen, and Jianfeng Gao.
+\newblock Tensor programs {V}: Tuning large neural networks via zero-shot
+  hyperparameter transfer.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~35, 2022.
+\newblock URL \url{https://arxiv.org/abs/2203.03466}.
+
+\bibitem[Yang et~al.(2024)Yang, Yu, Zhu, and Hayou]{yang2024depth}
+Greg Yang, Dingli Yu, Chen Zhu, and Soufiane Hayou.
+\newblock Tensor programs {VI}: Feature learning in infinite-depth neural
+  networks.
+\newblock In \emph{International Conference on Learning Representations}, 2024.
+\newblock URL \url{https://arxiv.org/abs/2310.02244}.
+
+\end{thebibliography}
