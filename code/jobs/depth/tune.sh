@@ -2,12 +2,11 @@
 # Submit the learning-rate sweeps of the depth/width study.
 # Every job is one short run on a fraction of the shape's tokens (tune_fraction in config/depth/tune.py).
 #
-# Usage (from the repo root):
+# Usage (from code/):
 #   jobs/depth/tune.sh sp                        # 5 shapes x 5 LRs = 25 jobs
 #   jobs/depth/tune.sh completep                 # 5 shapes x 5 LRs = 25 jobs
 #   jobs/depth/tune.sh sp 256x64                 # one shape, all 5 LRs
 #   jobs/depth/tune.sh sp 256x64 4.8e-3          # edge rule: extra LR point(s) for one shape
-#   jobs/depth/tune.sh completep 512x4           # optional diagnostic shape, not run for now
 #   DRY_RUN=1 jobs/depth/tune.sh sp              # print the commands and each run's state, submit nothing
 #
 # Runs that are already finished, queued or running are skipped (jobs/submit.sh), so running this
@@ -17,7 +16,7 @@
 
 set -euo pipefail
 
-usage() { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+usage() { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 
 PARAM="${1:-}"
 case "$PARAM" in

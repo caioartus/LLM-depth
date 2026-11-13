@@ -17,6 +17,7 @@ The training code is a fork of [EleutherAI/nanoGPT-mup](https://github.com/Eleut
 
 ```
 README.md            this file
+AGENTS.md            guide for agents: where each claim of the report comes from
 report/              the report (LaTeX)                                    [ours]
 code/                all code, configs and results
 ├── model.py         GPT model with muP / CompleteP                        [upstream, modified]
@@ -45,7 +46,6 @@ code/                all code, configs and results
   - RoPE in place of learned position embeddings (blocks marked `### Begin RoPE code ###`)
   - FLOP count and MFU using our $C_\text{tok}$, measured against each GPU's own peak (blocks marked `### Begin depth-study code ###`)
 - `train.py`: sequential (no-repeat) data reading, the same validation windows for every eval, a final eval at the last step, CSV logging with timing and MFU, per-layer gradient and Adam-update diagnostics (`diag.csv`), crash-safe checkpoints. All changes are inside `### Begin depth-study code ###` blocks.
-- `data/openwebtext/prepare.py`: added a `--num_docs` option for taking a subset.
 
 We removed upstream's `data/shakespeare*`. Everything else listed as upstream is unchanged.
 
@@ -82,7 +82,7 @@ uv run --frozen python analysis/collect_results.py
 uv run --frozen python analysis/plot_coord_check.py     # -> results/coord_check/plots/{depth,width}.png
 ```
 
-**4. LR tuning** (Table 2 and figure `tuning_transfer.png`): 5 shapes × 5 LRs per parameterisation, each on 10% of the shape's tokens, on A100-40GB.
+**4. LR tuning** (report Table 1 and Figure 1, `tuning_transfer.png`): 5 shapes × 5 LRs per parameterisation, each on 10% of the shape's tokens, on A100-40GB (under 40 min each).
 ```bash
 jobs/depth/tune.sh sp
 jobs/depth/tune.sh completep
@@ -90,7 +90,7 @@ uv run --frozen python analysis/collect_results.py      # picks the optimum per 
 ```
 The figure is the "Final val loss vs LR" plot in `analysis/tuning.ipynb`.
 
-**5. Final runs** (main results, conditions (a)–(d)): full compute budget, on H100-96GB, 2–6 h each. The script reads its learning rates from `results/best_lr.csv`.
+**5. Final runs** (main results, conditions (a)–(d)): full compute budget, on H100-96GB, 0.8–1.7 h each (wall-clock, from 1024×4 to 256×64). The script reads its learning rates from `results/best_lr.csv`.
 ```bash
 DRY_RUN=1 jobs/depth/final.sh    # optional: print what would be submitted
 jobs/depth/final.sh
@@ -111,7 +111,7 @@ uv run --frozen python analysis/collect_results.py
 
 | Notebook | Produces |
 |---|---|
-| `analysis/results.ipynb` | final losses, gaps, seed noise, loss curves, throughput, diagnostics; writes `results/plots/main_figure.png` (report Figure 1) |
+| `analysis/results.ipynb` | final losses, gaps, seed noise, loss curves, throughput, diagnostics; writes `results/plots/main_figure.png` (report Figure 2) and `results/plots/throughput.png` (report Figure 3) |
 | `analysis/tuning.ipynb` | LR sweeps, optima per shape (`tuning_transfer.png`) |
 | `analysis/analyse_warmup.ipynb` | the warmup check (10% vs 50% warmup) |
 

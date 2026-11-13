@@ -46,6 +46,8 @@
 \usepackage{enumitem}
 \usepackage{balance}
 
+\raggedbottom  % do not stretch paragraph spacing to fill columns
+
 % ============================================================
 % CUSTOM COMMANDS
 % ============================================================
@@ -81,7 +83,8 @@
 \author{
     Caio Artus\\
     \small National University of Singapore\\
-    \small \texttt{caio.artus@u.nus.edu}
+    \small \texttt{caio.artus@u.nus.edu}\\
+    \small Code: \href{https://github.com/caioartus/LLM-depth/tree/llm-depth}{\texttt{github.com/caioartus/LLM-depth/tree/llm-depth}}
 }
 
 \date{}
@@ -111,7 +114,7 @@ Choosing the dimensions of a Transformer \citep{vaswani2017attention} language m
 
 The common view is that width should be scaled faster than depth, and that deep and narrow models are harder to train. \citet{kaplan2020scaling} report that a wide range of shapes perform similarly at a fixed parameter count. \citet{levine2020limits} argue that depth only helps up to a threshold that grows logarithmically with width. \citet{mcleish2025gemstones_v1} fit scaling laws over width and depth and initially concluded that it is better to err towards wider, shallower models; their final version \citep{mcleish2025gemstones} instead finds deeper models better per FLOP, with wider ones ahead only in wall-clock time. More recently, \citet{fahim2026depth} go further and claim that past a critical depth, adding layers increases the loss even though it adds parameters, an effect they call the \emph{Depth Delusion}.
 
-A separate line of work studies parameterisation: the rules for scaling initialisation, learning rates and multipliers with model size. Under SP, the optimal learning rate drifts when the model shape changes. The maximal update parameterisation ($\mu$P) \citep{yang2021feature,yang2022tensor} fixes this for width: hyperparameters can be tuned on a narrow model and transferred to a wider one. Depth-$\mu$P \citep{yang2024depth} and \citet{bordelon2024depthwise} extend the idea to depth by scaling each residual branch by $L^{-1/2}$. CompleteP \citep{dey2025completep} scales it by $L^{-1}$ instead, and shows that this is the only choice in this family for which the learning rate transfers across depth in Transformers. They also show that under CompleteP a broader range of aspect ratios stays close to compute-optimal.
+A separate line of work studies parameterisation: the rules for scaling initialisation, learning rates and multipliers with model size. Under SP, the optimal learning rate drifts when the model shape changes. The maximal update parameterisation ($\mu$P) \citep{yang2021feature,yang2022tensor} fixes this for width: hyperparameters can be tuned on a narrow model and transferred to a wider one. Depth-$\mu$P \citep{yang2024depth} and \citet{bordelon2024depthwise} extend the idea to depth by scaling each residual branch by $L^{-1/2}$. CompleteP \citep{dey2025completep} scales it by $L^{-1}$ instead, and shows it is the unique choice that gives both depth-wise learning rate transfer and non-lazy feature learning. They also show that under CompleteP a broader range of aspect ratios stays close to compute-optimal.
 
 This raises our question: did the critics of deep models take parameterisation into account? Mostly not. \citet{fahim2026depth} train every shape under SP with a single learning rate that is never retuned for the deeper models. \citet{dey2025completep} make the same remark about earlier studies: \citet{kaplan2020scaling} use SP, and the learning rate scaling in the first version of \citet{mcleish2025gemstones_v1} does not transfer across depth, which put their deeper models at a disadvantage. A deep model trained with a learning rate tuned for a shallower one is a detuned model, and its loss says as much about the tuning as about the depth. So how much of the depth penalty comes from depth itself, and how much from a poor parameterisation or a detuned learning rate?
 
@@ -125,16 +128,16 @@ The experiments also produced a result we did not expect: models with a learning
 
 \subsection{Model architecture and training}
 
-We train five GPT-2-style decoder-only Transformers with different width-to-depth ratios at a fixed compute budget, under both SP and CompleteP. We write a shape as width $\times$ depth, $d \times L$. The shapes are \sh{256}{64}, \sh{384}{28}, \sh{512}{16}, \sh{640}{10} and \sh{1024}{4}, chosen so that each has roughly 50M non-embedding parameters; the exact counts differ slightly (Table~\ref{tab:flops}). We call \sh{512}{16} the \emph{base model}.
+We train five GPT-2-style decoder-only Transformers with different width-to-depth ratios at a fixed compute budget, under both SP and CompleteP. We write a shape as width $\times$ depth, $d \times L$. The shapes are \sh{256}{64}, \sh{384}{28}, \sh{512}{16}, \sh{640}{10} and \sh{1024}{4}, chosen so that each has roughly 50M non-embedding parameters. Including the tied embedding, the total parameter count ranges from 63M (\sh{256}{64}) to 102M (\sh{1024}{4}); exact counts are in Table~\ref{tab:flops}. We call \sh{512}{16} the \emph{base model}.
 
-All attention heads have $d_k = d_v = d_\text{head} = 64$, so there are $n_\text{heads} = d/d_\text{head}$ heads, and the MLP hidden dimension is $4d$. All models use RoPE positional embeddings (unlike the original GPT-2), GELU activations, pre-normalisation and tied embeddings.
+All attention heads have $d_k = d_v = d_\text{head} = 64$, so there are $n_\text{heads} = d/d_\text{head}$ heads, and the MLP hidden dimension is $4d$. All models use RoPE positional embeddings (unlike the original GPT-2), GELU activations, pre-normalisation and tied embeddings. Under SP we use the GPT-2 initialisation: every weight matrix and the embedding are drawn from $\mathcal{N}(0, \sigma^2)$ with $\sigma = 0.02$, except the two output projections of each block (the attention output projection and the MLP down projection), whose standard deviation is reduced to $\sigma/\sqrt{2L}$ so that the sum of the $2L$ branch outputs added to the residual stream does not grow with depth at initialisation.
 
-Models are trained on next-token prediction on SlimPajama \citep{soboleva2023slimpajama}, the dataset used by \citet{dey2025completep}, with a context length of 2048 and a batch size of 128 sequences. The learning rate follows a linear warmup over the first 10\% of steps, then a cosine decay to 0. We use AdamW with $\beta_1 = 0.9$, $\beta_2 = 0.95$, $\epsilon = 10^{-16}$ and no weight decay (making it equivalent to Adam), gradient clipping at $1.0$ and no dropout. These optimiser settings follow the CompleteP reference implementation and are the same for both parameterisations; setting weight decay to zero also removes one hyperparameter that would otherwise interact with the learning rate.
+Models are trained on next-token prediction on SlimPajama-6B\footnote{\url{https://huggingface.co/datasets/DKYoon/SlimPajama-6B}}, a random 1\% sample of SlimPajama \citep{soboleva2023slimpajama}, the dataset used by \citet{dey2025completep}, with the GPT-2 tokeniser, a context length of 2048 and a batch size of 128 sequences. No training token is repeated. We report the validation loss after the last step, measured on the same 1,600 sequences (3.3M tokens) of the SlimPajama-6B validation split for every run. The learning rate follows a linear warmup over the first 10\% of steps, then a cosine decay to 0. We use AdamW with $\beta_1 = 0.9$, $\beta_2 = 0.95$, $\epsilon = 10^{-16}$ and no weight decay (making it equivalent to Adam), gradient clipping at $1.0$ and no dropout. These optimiser settings follow the CompleteP reference implementation and are the same for both parameterisations; setting weight decay to zero also removes one hyperparameter that would otherwise interact with the learning rate.
 
 We apply CompleteP following \citet{dey2025completep}. Let $m_d = d/d_\text{base}$ and $m_L = L/L_\text{base}$ be the width and depth multipliers relative to CompleteP's base shape ($d_\text{base} = 256$, $L_\text{base} = 2$). With $\alpha = 1$:
 \begin{itemize}[leftmargin=*,itemsep=1pt]
     \item Attention logits are computed as $QK^\top / d_k$ instead of $QK^\top / \sqrt{d_k}$.
-    \item Hidden weight matrices are initialised with variance $\sigma^2 m_d^{-1}$.
+    \item Hidden weight matrices (including both output projections) are initialised with variance $\sigma^2 m_d^{-1}$. This replaces SP's $1/\sqrt{2L}$ factor on the output projections: CompleteP handles depth with the residual multiplier below instead of the initialisation.
     \item The learning rate of hidden weight matrices is scaled by $m_d^{-1}$.
     \item Residual branches (MLP and attention) are scaled by $m_L^{-1}$ before being added to the residual stream: $\vect{h}^{\ell+1} = \vect{h}^\ell + m_L^{-1} \mathcal{F}_\ell(\vect{h}^\ell)$.
     \item Output logits are scaled by $m_d^{-1}$. Since embeddings are tied, this multiplier applies only to the forward pass of the unembedding; the shared matrix keeps the initialisation and learning rate of the input embedding.
@@ -152,7 +155,7 @@ Let $N$ be the number of non-embedding parameters, $L$ the number of layers, $d$
 \[
 C_{\text{tok}} = 6N + 6LTd + 6dV.
 \]
-The total training compute of a run is $C = C_{\text{tok}} \cdot D$, where $D$ is the number of training tokens. \citet{hoffmann2022training} use a more detailed count that also includes the input embedding and the softmax, and counts the full $T \times T$ attention matrix, giving $12LTd$ where we use $6LTd$. The first two terms are small. The third doubles the attention cost, which would give the deepest shape about 12\% fewer tokens than under our count. Appendix~\ref{app:flops} derives each term and gives the token count of each shape.
+The total training compute of a run is $C = C_{\text{tok}} \cdot D$, where $D$ is the number of training tokens. \citet{hoffmann2022training} use a more detailed count that also includes the input embedding and the softmax, and counts the full $T \times T$ attention matrix, giving $12LTd$ where we use $6LTd$. The first two terms are small; the third makes the attention cost twice ours. Appendix~\ref{app:flops} derives each term and gives the token count of each shape.
 
 \subsection{Tuning runs}
 
@@ -189,11 +192,11 @@ The SP grid is centred on $6\times10^{-4}$, and the CompleteP grid on the paper'
     \label{fig:tuning}
 \end{figure}
 
-At this tuning horizon, the optimum moves with shape under both parameterisations. For SP it moves down one grid step for the two deepest shapes, and near the optimum the curves are flat: at the three widest shapes, $6\times10^{-4}$ and $1.2\times10^{-3}$ differ by less than 0.01. For CompleteP the optimum does not move steadily with shape: it drops two grid steps at \sh{1024}{4}, and the loss rises sharply above the optimum at \sh{640}{10} and \sh{1024}{4}. Measured by the location of the tuning-run optimum, CompleteP therefore shows no better learning rate transfer than SP. Section~\ref{sec:results} shows that these short-horizon optima are themselves biased, so this does not contradict the full-length results.
+At this tuning horizon, the optimum moves with shape under both parameterisations. For SP it moves down one grid step for the two deepest shapes, and near the optimum the curves are flat: at the three widest shapes, $6\times10^{-4}$ and $1.2\times10^{-3}$ differ by less than 0.01. For CompleteP the optimum does not move steadily with shape: relative to the \sh{512}{16} optimum ($2^{-7}$), it is one grid step lower at \sh{384}{28} and \sh{640}{10} and two grid steps lower at \sh{1024}{4}. At the two widest shapes the transferred $2^{-7}$ is clearly worse than the optimum in the tuning runs (by 0.22 at \sh{640}{10} and 0.18 at \sh{1024}{4}). Measured by the location of the tuning-run optimum, CompleteP therefore shows no better learning rate transfer than SP. Section~\ref{sec:results} shows that the tuning-run optimum can be far from the full-length one (by at least two grid steps for SP at \sh{256}{64}), and the size of this error may depend on shape. The movement of the tuning-run optimum is therefore weak evidence about transfer at full length, and does not contradict the full-run results.
 
 \subsection{Full runs and seed noise}
 
-Every full run uses seed 0 and reads the same tokens in the same order. To estimate run-to-run noise, we trained the base model with two more seeds under each parameterisation. The final losses are $3.387 \pm 0.007$ (SP) and $3.412 \pm 0.008$ (CompleteP), mean $\pm$ standard deviation over 3 seeds. The pooled standard deviation is $\sigma = 0.0076$ with 4 degrees of freedom; its 95\% confidence interval is $[0.005, 0.022]$. Seeds change only the initialisation, not the data order, so $\sigma$ probably understates the full run-to-run variance.
+Every full run uses seed 0 and reads the same tokens in the same order. To estimate run-to-run noise, we trained the base model with two more seeds under each parameterisation. The final losses are $3.387 \pm 0.007$ (SP) and $3.412 \pm 0.008$ (CompleteP), mean $\pm$ standard deviation over 3 seeds. The pooled standard deviation is $\sigma = 0.0076$ with 4 degrees of freedom; its 95\% confidence interval is $[0.005, 0.022]$ (chi-squared interval). Seeds change only the initialisation, not the data order, so $\sigma$ probably understates the full run-to-run variance.
 
 % ============================================================
 \section{Results}\label{sec:results}
@@ -215,7 +218,7 @@ Every full run uses seed 0 and reads the same tokens in the same order. To estim
         \cmidrule(lr){2-3}\cmidrule(lr){4-5}
         Shape & transfer & tuned & transfer & tuned \\
         \midrule
-        \sh{256}{64}  & 3.592 & 3.734 & 3.518 & $=$ \\
+        \sh{256}{64}  & 3.591 & 3.734 & 3.518 & $=$ \\
         \sh{384}{28}  & 3.428 & 3.527 & 3.439 & 3.423 \\
         \sh{512}{16}  & 3.380 & $=$   & 3.412 & $=$ \\
         \sh{640}{10}  & \textbf{3.373} & $=$ & 3.415 & 3.394 \\
@@ -226,21 +229,30 @@ Every full run uses seed 0 and reads the same tokens in the same order. To estim
     \label{tab:final}
 \end{table}
 
-\paragraph{At fixed compute, the best observed width-to-depth ratio is 32 to 64.} Table~\ref{tab:final} and Figure~\ref{fig:main} (left) give the final losses. Under every condition, the deepest shape (\sh{256}{64}, $d/L = 4$) is clearly worst, and the widest (\sh{1024}{4}, $d/L = 256$) is also worse than the middle shapes. The best runs are \sh{512}{16} and \sh{640}{10} ($d/L = 32$ and $64$). We cannot separate these two: under SP they differ by 0.007, less than one seed standard deviation. Too much depth therefore hurts under both parameterisations, with both transferred and tuned learning rates. This agrees with earlier SP studies, and shows that it also holds under CompleteP at this scale.
+\paragraph{At fixed compute, the best observed width-to-depth ratio is 32 to 64.} Table~\ref{tab:final} and Figure~\ref{fig:main} (left) give the final losses. Under every condition, the deepest shape (\sh{256}{64}, $d/L = 4$) is clearly worst, and the widest (\sh{1024}{4}, $d/L = 256$) is also worse than the middle shapes. The best runs are \sh{512}{16} and \sh{640}{10} ($d/L = 32$ and $64$). We cannot separate these two: under SP they differ by 0.006, less than one seed standard deviation. Too much depth therefore hurts under both parameterisations, with both transferred and tuned learning rates. This agrees with earlier SP studies, and shows that it also holds under CompleteP at this scale.
 
-\paragraph{CompleteP is less sensitive to the transferred learning rate at the deepest shape, but not better in absolute terms.} With the transferred learning rate, the loss rises by 0.212 nats from \sh{512}{16} to \sh{256}{64} under SP, and by 0.106 under CompleteP. The difference between the two gaps combines four single runs, so its standard error is $2\sigma \approx 0.015$, and the difference of 0.106 is about 7 standard errors. Even at the upper end of the confidence interval for $\sigma$, it is still 2.4 standard errors. This assumes that seed noise at \sh{256}{64} is similar to that at \sh{512}{16}, which we have not checked. At the shallower shapes, the difference between parameterisations is within seed noise.
+\paragraph{CompleteP is less sensitive to the transferred learning rate at the deepest shape, but not better in absolute terms.} With the transferred learning rate, the loss rises by 0.212 nats from \sh{512}{16} to \sh{256}{64} under SP, and by 0.106 under CompleteP. The difference between the two gaps combines four single runs, so its standard error is $2\sigma \approx 0.015$, and the difference of 0.106 is about 7 standard errors. Even at the upper end of the confidence interval for $\sigma$, it is still 2.4 standard errors. This assumes that seed noise at \sh{256}{64} is similar to that at \sh{512}{16}, which we have not checked. At the shallower shapes, this also seems to be true though the results are much less significant.
 
 Two observations limit this claim. First, much of the SP gap is due to the transferred learning rate being too low for \sh{256}{64}: at $2.4\times10^{-3}$ the SP gap shrinks to 0.162, and the difference to CompleteP falls to 0.056 (3.7 standard errors, or 1.3 at the upper end of $\sigma$). This best SP value lies on the edge of the learning rates we tried at full length, so the true SP optimum may close the gap further. Second, CompleteP's absolute loss is higher than SP's at \sh{512}{16} (by 0.025 averaged over 3 seeds), \sh{640}{10} and \sh{1024}{4}; its smaller gap is measured from a worse reference. At \sh{256}{64}, CompleteP (3.518) is still better than the best SP run we have (3.542). We conclude that CompleteP makes the deepest shape more robust to an imperfect learning rate, but our data do not show that it reaches a lower loss than a well-tuned SP model.
 
-\paragraph{Tuning on 10\% of the tokens with a compressed schedule picks a learning rate that is too small.} The tuning runs compress the full schedule, so their warmup lasts only 49 to 59 steps, against 489 to 593 in a full run. Their optima can be far from the full-length optimum, and always on the low side. For SP at \sh{256}{64}, the tuning runs chose $6\times10^{-4}$, but the full run with the transferred $1.2\times10^{-3}$ was 0.14 nats better, and a further full run at $2.4\times10^{-3}$ was better still. This explains why the tuned conditions underperform the transferred ones in Figure~\ref{fig:main}.
+\paragraph{Tuning on 10\% of the tokens with a compressed schedule picks a learning rate that is too small.} The tuning runs compress the full schedule, so their warmup lasts only 49 to 59 steps, against 489 to 593 in a full run. Their optima can be far from the full-length optimum, and always on the low side in our cases. For SP at \sh{256}{64}, the tuning runs chose $6\times10^{-4}$, but the full run with the transferred $1.2\times10^{-3}$ was 0.14 nats better, and a further full run at $2.4\times10^{-3}$ was better still. This explains why the tuned conditions sometimes underperform the transferred ones in Figure~\ref{fig:main}.
 
 We hypothesise that the short warmup penalises large learning rates early in training, and that the tuning run is too short to recover. To test this, we repeated the SP \sh{256}{64} tuning runs at the three learning rates whose full-length result we know, with the warmup lengthened to 50\% of the steps (278 steps instead of 56; the full run warms up for 557). The ranking of the learning rates reverses and matches the full-length ranking (Figure~\ref{fig:main}, right). The gaps are not proportional, however: the long-warmup tuning run predicts a larger improvement from the highest learning rate than the full run shows, so a long warmup may in turn overestimate the optimum. This test is limited: it covers one shape, one parameterisation and three learning rates with a single seed, and lengthening the warmup also shortens the cosine decay, so the two effects are confounded. Within these limits, our recommendation is to tune on a larger fraction of the data, or at least to keep the warmup from becoming too short in absolute steps.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{figures/throughput.png}
+    \caption{Training cost of each shape at the same FLOP budget, on one H100 GPU. (a) Model FLOP utilisation (MFU) of each shape, averaged over all its final runs. (b) Best final loss per shape over the transferred and tuned conditions (seed 0), against training time per full run (excluding evaluation, averaged over all final runs of the shape). The extra SP run at \sh{256}{64} with $2.4\times10^{-3}$ (3.542) is not shown.}
+    \label{fig:throughput}
+\end{figure}
+
+\paragraph{Deep shapes are also slower to train.} All shapes use the same number of FLOPs, but not the same time. A full run of \sh{256}{64} takes 1.61 hours, against 0.78 hours for \sh{1024}{4}, because its MFU is half as high (17.6\% vs 36.0\%, Figure~\ref{fig:throughput}a). At width 256 the matrix multiplications are too small to keep the GPU busy, and each of the 64 layers adds fixed costs such as normalisation, kernel launches and residual additions that the FLOP count ignores. The two deepest shapes also had to use a micro-batch of 16 sequences instead of 32 to fit in memory, with the same tokens per step, which lowers utilisation further. These results are valid for our implementation and setup. Within it, depth costs twice: the deep shapes reach a worse loss \emph{and} take longer to get there (Figure~\ref{fig:throughput}b). \sh{640}{10} is the best choice in both respects, matching \sh{512}{16} in loss while being slightly faster.
 
 % ============================================================
 \section{Discussion, limitations and future work}\label{sec:discussion}
 % ============================================================
 
-\paragraph{Relation to prior work.} Our results add evidence that too much depth hurts Transformer language models at a fixed compute budget, and that this holds under CompleteP, not only under SP. Consistent with \citet{kaplan2020scaling}, the loss is nearly flat over a range of shapes ($d/L$ from 32 to 64 here), but it rises sharply at the deep end. This fits the view of \citet{levine2020limits} that the useful depth is bounded at a given width. Unlike the final version of \citet{mcleish2025gemstones}, we do not find the deepest models best per FLOP. Our scale is much smaller, however, and embedding parameters make up a large share of our models. Our measurements also confirm their wall-clock argument: at equal FLOPs, \sh{256}{64} processes about 252k tokens per second against 465k for \sh{1024}{4} (17.5\% vs 36.9\% model FLOP utilisation), so a full run of the deepest shape takes about twice as long. Finally, the smaller gap under CompleteP partly supports the motivation of this work, that detuning makes deep models look worse than they are, though it does not account for the whole depth penalty.
+\paragraph{Relation to prior work.} Our results add evidence that too much depth hurts Transformer language models at a fixed compute budget, and that this holds under CompleteP, not only under SP. Consistent with \citet{kaplan2020scaling}, the loss is nearly flat over a range of shapes ($d/L$ from 32 to 64 here), but it rises sharply at the deep end. This fits the view of \citet{levine2020limits} that the useful depth is bounded at a given width. Unlike the final version of \citet{mcleish2025gemstones}, we do not find the deepest models best per FLOP. Our scale is much smaller, however, and embedding parameters make up a large share of our models. Our measurements do confirm their wall-clock argument: at equal FLOPs, the deepest shape takes about twice as long to train as the widest (Figure~\ref{fig:throughput}). Finally, the smaller gap under CompleteP partly supports the motivation of this work, that detuning makes deep models look worse than they are, though it does not account for the whole depth penalty.
 
 \paragraph{Limitations.}
 \begin{itemize}[leftmargin=*,itemsep=1pt]
@@ -270,6 +282,7 @@ At the scale studied, excessively deep and narrow Transformers underperform at a
 % ============================================================
 
 \balance
+\setlength{\bibsep}{2pt plus 1pt}  % tighter reference list
 \bibliographystyle{plainnat}
 \bibliography{references}
 
@@ -307,7 +320,7 @@ This gives $12d^2$ per block and $N = 12 d^2 L$. We leave out the LayerNorm gain
 \[
     C_\text{tok} = 6N + 6LTd + 6dV = 72 d^2 L + 6LTd + 6dV .
 \]
-The budget is set by the base shape \sh{512}{16}: we take 20 tokens per total parameter, $D_\text{base} = 20\,(12 d^2 L + dV) = 20 \times 76.1\text{M} = 1.52$B tokens, and $C = D_\text{base} \cdot C_\text{tok}(512, 16) \approx 8.48 \times 10^{17}$ FLOPs. Every other shape is trained for $D = C / C_\text{tok}(d, L)$ tokens, rounded to a whole number of steps of $128 \times 2048 = 262{,}144$ tokens. Table~\ref{tab:flops} gives the resulting values. At $T = 2048$ the attention and unembedding terms together make up 46\% to 54\% of the compute, which is why we do not drop them as \citeauthor{kaplan2020scaling} do. Their split depends strongly on shape: attention grows with $L$ and the unembedding with $d$, so the deepest and the widest shapes are the ones that a $6N$ count would misestimate the most.
+The budget is set by the base shape \sh{512}{16}: we take 20 tokens per total parameter, $D_\text{base} = 20\,(12 d^2 L + dV) = 20 \times 76.1\text{M} = 1.52$B tokens, and $C = D_\text{base} \cdot C_\text{tok}(512, 16) \approx 8.48 \times 10^{17}$ FLOPs. Every other shape is trained for $D = C / C_\text{tok}(d, L)$ tokens, rounded to a whole number of steps of $128 \times 2048 = 262{,}144$ tokens. Table~\ref{tab:flops} gives the resulting values. At $T = 2048$ the attention and unembedding terms together make up 45\% to 54\% of the compute, which is why we do not drop them as \citeauthor{kaplan2020scaling} do. Their split depends strongly on shape: attention grows with $L$ and the unembedding with $d$, so the deepest and the widest shapes are the ones that a $6N$ count would misestimate the most.
 
 \begin{table}[H]
     \centering

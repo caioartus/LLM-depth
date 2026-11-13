@@ -1,3 +1,5 @@
+> **Note:** this is the upstream README of [EleutherAI/nanoGPT-mup](https://github.com/EleutherAI/nanoGPT-mup) (branch `completep`), kept unchanged. For this project (the width vs depth study), see the [root README](../README.md).
+
 # Don't be lazy: CompleteP enables compute-efficient deep transformers
 This branch contains a minimal implementation of CompleteP introduced in [Don't be lazy: CompleteP enables compute-efficient deep transformers](https://arxiv.org/abs/2505.01618).
 
